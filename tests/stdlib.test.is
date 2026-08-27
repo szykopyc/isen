@@ -1,0 +1,25 @@
+borrow Env
+borrow Json
+borrow LengText
+borrow Test
+
+dec document @@ json = Json.parse("{\"name\":\"Isen\",\"values\":[1,2],\"nothing\":null}")
+Test.equal(Json.kind(document), "object", "parsed JSON kind")
+Test.equal(Json.length(document), 3, "JSON object length")
+
+dec name_value @@ json = Json.get(document, "name").pour_into(json)
+Test.equal(Json.as_string(name_value).pour_into(string), "Isen", "JSON string extraction")
+dec values @@ json = Json.get(document, "values").pour_into(json)
+Test.equal(Json.as_int(Json.at(values, 1).pour_into(json)).pour_into(int), 2, "JSON array traversal")
+dec nothing @@ json = Json.get(document, "nothing").pour_into(json)
+Test.assert(Json.is_null(nothing), "JSON null was not preserved")
+
+dec pretty @@ string = Json.pretty(values, 4)
+Test.equal(pretty, "[\n    1,\n    2\n]", "JSON indentation")
+Test.equal(LengText.pretty_json(values, 2), "[\n  1,\n  2\n]", "LengText JSON formatting")
+Test.equal(LengText.indent("one\ntwo", 3), "   one\n   two", "generic indentation")
+
+dec environment @@ map[string, string] = Env.read("tests/fixture.env").pour_into(map[string, string])
+Test.equal(environment["EMPTY"], "", "empty environment values stay empty")
+Test.equal(environment["NAME"], "Isen", "environment file parsing")
+Test.assert(Env.read("tests/missing.env") == naught, "missing environment file should be naught")

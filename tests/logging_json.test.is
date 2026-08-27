@@ -1,0 +1,21 @@
+borrow File
+borrow Json
+borrow Test
+borrow logger from "../stdlib/logging/json.is"
+borrow debug from "../stdlib/logging/json.is"
+borrow info from "../stdlib/logging/json.is"
+
+File.make_dir(".isen")
+dec path @@ string = ".isen/logging-json-test.jsonl"
+File.write(path, "")
+
+dec log = logger("info", false, path)
+debug(log, "filtered", #{})
+info(log, "server started", #{"host": "127.0.0.1", "port": "8080"})
+
+dec document @@ json = Json.parse(File.read(path))
+Test.equal(Json.as_string(Json.get(document, "level").pour_into(json)).pour_into(string), "info", "JSON level")
+Test.equal(Json.as_string(Json.get(document, "message").pour_into(json)).pour_into(string), "server started", "JSON message")
+dec context @@ json = Json.get(document, "context").pour_into(json)
+Test.equal(Json.as_string(Json.get(context, "host").pour_into(json)).pour_into(string), "127.0.0.1", "JSON context")
+Test.assert(Json.as_string(Json.get(document, "timestamp").pour_into(json)) != naught, "JSON timestamp")

@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+echo "pre-commit: Rust formatting"
+cargo fmt --all -- --check
+
+echo "pre-commit: Rust type checking"
+cargo check --locked --all-features
+
+echo "pre-commit: Isen formatting"
+cargo run --quiet --locked --features ml-kernels -- --format --check .
+
+echo "pre-commit: Isen diagnostics"
+cargo run --quiet --locked --features ml-kernels -- --diagnostics .
+
+echo "pre-commit: generated reference"
+cargo run --quiet --locked --features ml-kernels -- --reference --check

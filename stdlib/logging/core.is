@@ -1,0 +1,64 @@
+// Shared logging mechanics. Formatting policy lives in sibling stashes.
+
+borrow File
+borrow Time
+
+form Logger $
+  minimum @@ int,
+  stdout @@ bool,
+  file @@ perchance[string],
+\$
+
+form LogEvent $
+  timestamp @@ string,
+  level @@ int,
+  label @@ string,
+  message @@ string,
+  context @@ map[string, string],
+\$
+
+given level_value(name @@ string) @@ int $
+  if name == "debug" $ ret 10 \$
+  if name == "info" $ ret 20 \$
+  if name == "warning" $ ret 30 \$
+  if name == "error" $ ret 40 \$
+  scream("unknown logging level: " + name)
+\$
+
+given make_logger(minimum @@ string, stdout @@ bool, file @@ perchance[string]) @@ Logger $
+  ret Logger $
+    minimum: level_value(minimum),
+    stdout: stdout,
+    file: file,
+  \$
+\$
+
+given make_event(level @@ int, label @@ string, message @@ string, context @@ map[string, string]) @@ LogEvent $
+  ret LogEvent $
+    timestamp: Time.utc(),
+    level: level,
+    label: label,
+    message: message,
+    context: context,
+  \$
+\$
+
+given enabled(logger @@ Logger, event @@ LogEvent) @@ bool $
+  ret event.level >= logger.minimum
+\$
+
+// stdout_line may contain ANSI escapes; file_line must not.
+given emit(logger @@ Logger, stdout_line @@ string, file_line @@ string) @@ unit $
+  if logger.stdout $ say(stdout_line) \$
+  if logger.file != naught $
+    File.append(logger.file.pour_into(string), file_line + "\n")
+  \$
+\$
+
+share Logger
+share LogEvent
+share level_value
+share make_logger
+share make_event
+share enabled
+share emit

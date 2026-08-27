@@ -1,0 +1,35 @@
+given require_string(value @@ string) @@ unit $
+  if value == "" $ raise("expected a non-empty string") \$
+\$
+
+given implicit_unit() @@ unit $
+  require_string("unit")
+\$
+
+dec result @@ unit = implicit_unit()
+if result != unit $ raise("unit must be a singleton value") \$
+
+dec present @@ perchance[string] = "Isen"
+if present != naught $
+  require_string(present)
+  present = naught
+  dec absent_after_assignment @@ naught = present
+\$ else $
+  raise("present value took the absent branch")
+\$
+
+dec absent @@ perchance[string] = naught
+if naught == absent $
+  dec definitely_absent @@ naught = absent
+\$ else $
+  require_string(absent)
+\$
+
+dec looping @@ perchance[string] = "once"
+dec visits @@ int = 0
+aslongas looping != naught $
+  require_string(looping)
+  visits += 1
+  looping = naught
+\$
+if visits != 1 $ raise("aslongas narrowing failed") \$

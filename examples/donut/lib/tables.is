@@ -1,0 +1,37 @@
+// lib/tables.is
+//
+// A Wheel is a full turn of precomputed sines and cosines. Maths performs each
+// calculation once at start-up; the renderer only ever does array lookups.
+//
+// This is the honest way to make an interpreted language fast: do less work,
+// rather than smuggling the work into Rust.
+
+borrow Array
+borrow Maths
+
+form Wheel $
+  steps @@ int,
+  sines @@ arr[float],
+  cosines @@ arr[float],
+\$
+
+given poke(cells @@ arr[float], index @@ int, value @@ float) @@ unit $
+  cells[index] = value
+\$
+
+given wheel(steps @@ int) @@ Wheel $
+  dec sines @@ arr[float] = Array.float(steps, 0.0)
+  dec cosines @@ arr[float] = Array.float(steps, 0.0)
+  dec step @@ float = Maths.tau / steps.pour_into(float)
+  dec i @@ int = 0
+  aslongas i < steps $
+    dec angle @@ float = i.pour_into(float) * step
+    poke(sines, i, Maths.sin(angle))
+    poke(cosines, i, Maths.cos(angle))
+    i = i + 1
+  \$
+  ret Wheel $ steps: steps, sines: sines, cosines: cosines \$
+\$
+
+share Wheel
+share wheel

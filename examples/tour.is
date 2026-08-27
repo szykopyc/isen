@@ -1,0 +1,38 @@
+// Isen: typed values, no magic conversions, no print.
+borrow Time
+borrow Maths
+
+dec title @@ string = "Isen"
+dec matrix @@ arr[list[int]] = @[[1, 2], [3, 4]]
+dec tags @@ map[string, int] = #{"rust": 1, "interpreter": 2}
+dec absent @@ perchance[string] = naught
+
+form User $
+  name @@ string,
+  score @@ int,
+\$
+
+given total(values @@ list[int]) @@ int $
+  dec sum @@ int = 0
+  each value in values $
+    sum = sum + value
+  \$
+  ret sum
+\$
+
+space Stats $
+  given doubled(value @@ int) @@ int $
+    ret value * 2
+  \$
+\$
+
+dec user @@ User = User $ name: "Ada", score: Stats.doubled(total(matrix[0])) \$
+say(title, user.name, user.score, tags["rust"], absent)
+each number in [1, 2, 3, 4] $
+  if number > 2 $ enough \$
+  say("counting", number.pour_into(string))
+\$
+dec started @@ int = Time.clock()
+Time.sleep(1)
+say("elapsed:", Time.since(started), "ms")
+say("sin(pi / 2):", Maths.sin(Maths.pi / 2.0), "e:", Maths.e)

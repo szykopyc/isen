@@ -1,0 +1,40 @@
+// A tiny word-level Markov chain. Each branch is a weighted transition from
+// a deliberately small imaginary night-scene corpus.
+borrow Random
+
+given next_word(word @@ string) @@ string $
+  dec roll @@ int = Random.int(0, 99)
+
+  if word == "the" $
+    if roll < 55 $ ret "wind" \$
+    ret "river"
+  \$
+  if word == "wind" $
+    if roll < 60 $ ret "moves" \$
+    ret "waits"
+  \$
+  if word == "river" $
+    if roll < 55 $ ret "turns" \$
+    ret "shines"
+  \$
+  if word == "moves" || word == "turns" $ ret "through" \$
+  if word == "waits" || word == "shines" $ ret "beneath" \$
+  if word == "through" $ ret "trees" \$
+  if word == "beneath" $ ret "moon" \$
+  if word == "trees" || word == "moon" $ ret "at" \$
+  if word == "at" $ ret "night" \$
+  if word == "night" $ ret "the" \$
+  ret "the"
+\$
+
+dec word @@ string = "the"
+dec sentence @@ string = word
+dec step @@ int = 1
+
+aslongas step < 30 $
+  word = next_word(word)
+  sentence = sentence + " " + word
+  step = step + 1
+\$
+
+say(sentence)

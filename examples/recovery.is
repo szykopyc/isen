@@ -1,0 +1,23 @@
+// Runtime recovery in Isen: attempt, recover, and always.
+
+borrow LengText
+
+problem MachineObjection $
+  gear @@ int
+\$
+
+dec cleaned @@ bool = false
+
+attempt $
+  say("opening a temperamental machine")
+  scream(MachineObjection $ message: "the machine objected", gear: 4 \$)
+\$ recover problem @@ MachineObjection $
+  shout("contained failure in gear", problem.gear, ":", problem.message)
+\$ recover problem @@ Problem $
+  shout("other failure:", problem.message)
+\$ always $
+  cleaned = true
+  say(LengText.green("cleanup ran"))
+\$
+
+if !cleaned $ scream("cleanup invariant failed") \$

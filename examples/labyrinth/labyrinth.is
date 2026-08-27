@@ -1,0 +1,237 @@
+// labyrinth.is
+//
+//   ./isen labyrinth.is
+//   ./isen labyrinth.is -- 21 11
+//   ./isen labyrinth.is -- 21 11 --seed=1848 --solve-slow
+//   ./isen labyrinth.is -- 31 15 --solve-slow --delay=20
+//
+// Cells across and cells down are positional. Keyword flags:
+//
+//   --solve-instant   draw the finished labyrinth in one go (the default)
+//   --solve-slow      watch the flood spread and the route walk itself
+//   --delay=N         milliseconds between frames, 0 to 1000, default 50
+//   --seed=N          reproduce an exact labyrinth
+//   --clear           wipe the terminal first, instant mode only
+//
+// Slow mode composes each frame in lib/screen.is and blits it in one write,
+// so the terminal never shows a half-drawn grid.
+
+borrow Args
+borrow Kwargs
+borrow Array
+borrow List
+borrow Random
+borrow String
+borrow Time
+borrow LengText
+
+borrow Scene from "lib/labyrinth.is"
+borrow build_maze from "lib/labyrinth.is"
+borrow flood from "lib/labyrinth.is"
+borrow trace from "lib/labyrinth.is"
+borrow largest from "lib/labyrinth.is"
+borrow open_count from "lib/labyrinth.is"
+borrow dead_end_count from "lib/labyrinth.is"
+borrow scene_of from "lib/labyrinth.is"
+borrow render from "lib/labyrinth.is"
+borrow clamp from "lib/labyrinth.is"
+
+borrow Screen from "lib/screen.is"
+borrow open_screen from "lib/screen.is"
+borrow compose from "lib/screen.is"
+borrow present from "lib/screen.is"
+borrow begin from "lib/screen.is"
+borrow finish from "lib/screen.is"
+
+borrow logger from "stdlib/logging/colours.is"
+borrow info from "stdlib/logging/colours.is"
+borrow warning from "stdlib/logging/colours.is"
+
+problem BadSize $
+  requested @@ int,
+\$
+
+form Report $
+  cells @@ int,
+  corridors @@ int,
+  dead_ends @@ int,
+  route @@ int,
+  deepest @@ int,
+  millis @@ int,
+\$
+
+// A missing argument keeps the fallback; a malformed one complains and
+// keeps the fallback too, because a bad flag is not worth dying over.
+given read_number(raw @@ perchance[string], fallback @@ int) @@ int $
+  if raw == naught $ ret fallback \$
+  dec text @@ string = raw.pour_into(string)
+  dec value @@ int = fallback
+  attempt $
+    value = text.pour_into(int)
+  \$ recover trouble @@ Problem $
+    shout("ignoring " + text + ": " + trouble.message)
+  \$
+  ret value
+\$
+
+given checked(value @@ int) @@ int $
+  if value < 2 $
+    dec trouble @@ BadSize = BadSize $
+      message: "a labyrinth needs at least two cells on each side",
+      requested: value
+    \$
+    scream(trouble)
+  \$
+  ret clamp(value, 2, 60)
+\$
+
+given pause(delay @@ int) @@ unit $
+  if delay > 0 $ Time.sleep(delay) \$
+\$
+
+// One frame's worth of lines: status, grid, legend. Composed rather than
+// printed, so the caller can blit it in a single write.
+given frame_lines(scene @@ Scene, status @@ string, key @@ string) @@ list[string] $
+  dec lines @@ list[string] = [status, ""]
+  each row in render(scene) $
+    lines = List.push(lines, row)
+  \$
+  lines = List.push(lines, "")
+  lines = List.push(lines, key)
+  ret lines
+\$
+
+dec slow @@ bool = Kwargs.has("solve-slow") && !Kwargs.has("solve-instant")
+dec delay @@ int = clamp(read_number(Kwargs.get("delay"), 50), 0, 1000)
+
+// Animated runs redraw constantly, so keep the logger off stdout there.
+dec log = logger("info", !slow, naught)
+
+dec seed @@ int = read_number(Kwargs.get("seed"), Time.unix_millis() % 1000000)
+Random.seed(seed)
+
+dec want_wide @@ int = read_number(Args.get(0), 17)
+dec want_high @@ int = read_number(Args.get(1), 9)
+dec cells_wide @@ int = 2
+dec cells_high @@ int = 2
+
+attempt $
+  cells_wide = checked(want_wide)
+  cells_high = checked(want_high)
+\$ recover trouble @@ BadSize $
+  warning(log, trouble.message, #{"requested": trouble.requested.pour_into(string)})
+  cells_wide = clamp(want_wide, 2, 60)
+  cells_high = clamp(want_high, 2, 40)
+\$ always $
+  info(log, "carving a labyrinth", #{
+    "seed": seed.pour_into(string),
+    "wide": cells_wide.pour_into(string),
+    "high": cells_high.pour_into(string)
+  })
+\$
+
+dec started @@ int = Time.clock()
+dec gw @@ int = cells_wide * 2 + 1
+dec gh @@ int = cells_high * 2 + 1
+dec slots @@ int = gw * gh
+
+dec cells @@ arr[int] = build_maze(cells_wide, cells_high)
+dec distance @@ arr[int] = Array.int(slots, -1)
+dec previous @@ arr[int] = Array.int(slots, -1)
+dec route @@ arr[int] = Array.int(slots, 0)
+
+dec goal @@ int = (gh - 2) * gw + gw - 2
+dec found @@ int = flood(cells, gw, gh, distance, previous)
+dec steps @@ int = 0
+
+if found >= 0 $
+  steps = trace(previous, route, goal)
+\$ else $
+  warning(log, "the two corners are not connected", #{})
+\$
+
+dec deepest @@ int = largest(distance)
+dec carved @@ int = Time.since(started)
+
+dec title @@ string = LengText.blue("labyrinth ")
+title = title + cells_wide.pour_into(string) + " x " + cells_high.pour_into(string)
+title = title + "   seed " + seed.pour_into(string)
+
+dec legend @@ list[string] = [
+  LengText.yellow("▶▶") + " start",
+  LengText.red("◆◆") + " goal",
+  LengText.green("▓▓") + " route",
+  "░░ flood order, near " + LengText.red("→") + " far"
+]
+dec key @@ string = String.join(legend, "    ")
+
+if slow $
+  dec screen @@ Screen = open_screen()
+  begin(screen)
+
+  // `always` guarantees the cursor comes back, even if a frame fails.
+  attempt $
+    dec last @@ string = ""
+
+    // The wave spreads: one distance ring per frame.
+    dec ring @@ int = 0
+    aslongas ring <= deepest $
+      dec progress @@ string = "flooding " + ring.pour_into(string) + " / " + deepest.pour_into(string)
+      dec status @@ string = title + "   " + LengText.yellow(progress)
+      dec buffer @@ string = compose(screen, frame_lines(scene_of(cells, distance, route, gw, gh, deepest, ring, 0), status, key))
+      if buffer != last $
+        present(screen, buffer)
+        last = buffer
+        pause(delay)
+      \$
+      ring = ring + 1
+    \$
+
+    // Then the solution walks itself from the entrance to the goal.
+    dec walked @@ int = 1
+    aslongas walked <= steps $
+      dec progress @@ string = "walking " + walked.pour_into(string) + " / " + steps.pour_into(string)
+      dec status @@ string = title + "   " + LengText.green(progress)
+      dec buffer @@ string = compose(screen, frame_lines(scene_of(cells, distance, route, gw, gh, deepest, deepest, walked), status, key))
+      if buffer != last $
+        present(screen, buffer)
+        last = buffer
+        pause(delay)
+      \$
+      walked = walked + 1
+    \$
+  \$ always $
+    finish(screen)
+  \$
+\$ else $
+  dec finished @@ Scene = scene_of(cells, distance, route, gw, gh, deepest, deepest, steps)
+  if Kwargs.has("clear") $ LengText.flush() \$
+  each line in frame_lines(finished, title, key) $
+    say(line)
+  \$
+\$
+
+dec report @@ Report = Report $
+  cells: cells_wide * cells_high,
+  corridors: open_count(cells) - cells_wide * cells_high,
+  dead_ends: dead_end_count(cells, gw, gh),
+  route: steps,
+  deepest: deepest,
+  millis: carved
+\$
+
+say("")
+say(LengText.blue("report"))
+say("  cells      " + report.cells.pour_into(string))
+say("  corridors  " + report.corridors.pour_into(string))
+say("  dead ends  " + report.dead_ends.pour_into(string))
+say("  route      " + report.route.pour_into(string) + " glyphs")
+say("  deepest    " + report.deepest.pour_into(string) + " from the entrance")
+say("  carved in  " + report.millis.pour_into(string) + " ms")
+say("")
+
+info(log, "labyrinth solved", #{
+  "route": report.route.pour_into(string),
+  "dead_ends": report.dead_ends.pour_into(string),
+  "millis": report.millis.pour_into(string)
+})

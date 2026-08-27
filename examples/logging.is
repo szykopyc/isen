@@ -1,0 +1,10 @@
+// Explicit, plain logging to stdout. Import colours.is instead to opt into
+// LengText, or json.is for one machine-readable JSON object per line.
+
+borrow logger from "../stdlib/logging/human.is"
+borrow info from "../stdlib/logging/human.is"
+borrow warning from "../stdlib/logging/human.is"
+
+dec log = logger("info", true, naught)
+info(log, "service started", #{"port": "8080"})
+warning(log, "capacity is low", #{"remaining": "12%"})

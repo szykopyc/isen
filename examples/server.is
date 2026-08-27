@@ -1,0 +1,12 @@
+// A tiny UDP echo server. It handles three packets then exits.
+borrow Udp
+dec server @@ udp_socket = Udp.bind("127.0.0.1", 9000)
+say("Echo server listening on 127.0.0.1:9000")
+
+each turn in [1, 2, 3] $
+  dec packet @@ udp_packet = Udp.receive(server, 65535)
+  say("received", packet.text, "from", packet.host, packet.port)
+  Udp.send_bytes_to(server, packet.host, packet.port, packet.bytes)
+\$
+
+say("Echo server finished")

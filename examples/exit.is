@@ -1,0 +1,7 @@
+// A successful early exit: useful when the desired work is already done.
+say("the cached result is good enough")
+exit
+
+// Neither of these can run.
+say("rebuilding everything")
+scream("exit failed to leave")

@@ -1,0 +1,124 @@
+// labyrinth.test.is
+//
+//   ./isen test
+//   ./isen test --profile fast
+//
+// A perfect maze is a spanning tree over the cells, so the invariants are
+// sharp: every cell reached exactly once, corridors == cells - 1, no loops,
+// and an unbroken outer wall.
+
+borrow Test
+borrow Array
+borrow Random
+borrow String
+
+borrow build_maze from "lib/labyrinth.is"
+borrow flood from "lib/labyrinth.is"
+borrow trace from "lib/labyrinth.is"
+borrow largest from "lib/labyrinth.is"
+borrow open_count from "lib/labyrinth.is"
+borrow clamp from "lib/labyrinth.is"
+
+borrow Screen from "lib/screen.is"
+borrow open_screen from "lib/screen.is"
+borrow compose from "lib/screen.is"
+
+given checksum(cells @@ arr[int]) @@ int $
+  dec total @@ int = 0
+  dec i @@ int = 0
+  dec count @@ int = size(cells)
+  aslongas i < count $
+    total = (total * 31 + cells[i] * (i + 7)) % 1000003
+    i = i + 1
+  \$
+  ret total
+\$
+
+// --- shape -----------------------------------------------------------------
+
+dec wide @@ int = 8
+dec high @@ int = 6
+dec gw @@ int = wide * 2 + 1
+dec gh @@ int = high * 2 + 1
+
+Random.seed(7)
+dec cells @@ arr[int] = build_maze(wide, high)
+
+Test.equal(size(cells), gw * gh, "one slot per glyph")
+
+dec border_walls @@ int = 0
+dec x @@ int = 0
+aslongas x < gw $
+  if cells[x] == 1 $ border_walls = border_walls + 1 \$
+  if cells[(gh - 1) * gw + x] == 1 $ border_walls = border_walls + 1 \$
+  x = x + 1
+\$
+dec y @@ int = 0
+aslongas y < gh $
+  if cells[y * gw] == 1 $ border_walls = border_walls + 1 \$
+  if cells[y * gw + gw - 1] == 1 $ border_walls = border_walls + 1 \$
+  y = y + 1
+\$
+Test.equal(border_walls, gw * 2 + gh * 2, "the outer wall is unbroken")
+
+dec carved @@ int = 0
+dec cy @@ int = 0
+aslongas cy < high $
+  dec cx @@ int = 0
+  aslongas cx < wide $
+    if cells[(cy * 2 + 1) * gw + cx * 2 + 1] == 0 $ carved = carved + 1 \$
+    cx = cx + 1
+  \$
+  cy = cy + 1
+\$
+Test.equal(carved, wide * high, "every cell was visited")
+
+// A spanning tree joins n cells with exactly n - 1 corridors.
+Test.equal(open_count(cells) - wide * high, wide * high - 1, "no loops, no islands")
+
+// --- solving ---------------------------------------------------------------
+
+dec slots @@ int = gw * gh
+dec distance @@ arr[int] = Array.int(slots, -1)
+dec previous @@ arr[int] = Array.int(slots, -1)
+dec route @@ arr[int] = Array.int(slots, 0)
+dec goal @@ int = (gh - 2) * gw + gw - 2
+
+dec found @@ int = flood(cells, gw, gh, distance, previous)
+Test.assert(found > 0, "the far corner is reachable")
+Test.equal(trace(previous, route, goal), found + 1, "the route includes both ends")
+Test.assert(largest(distance) >= found, "nothing is nearer than the goal is far")
+
+// The animation reveals route glyphs in numeric order, so the numbering has
+// to run 1 at the entrance through `steps` at the goal.
+Test.equal(route[gw + 1], 1, "the route is numbered from the entrance")
+Test.equal(route[goal], found + 1, "and finishes at the goal")
+
+// Both corners sit on odd coordinates, so any route between them is even.
+Test.equal(found % 2, 0, "corner to corner takes an even number of steps")
+
+// --- determinism -----------------------------------------------------------
+
+Random.seed(1848)
+dec first @@ int = checksum(build_maze(wide, high))
+Random.seed(1848)
+dec again @@ int = checksum(build_maze(wide, high))
+Test.equal(first, again, "one seed, one labyrinth")
+
+Random.seed(1849)
+Test.not_equal(checksum(build_maze(wide, high)), first, "a different seed diverges")
+
+// --- clamping --------------------------------------------------------------
+
+Test.equal(clamp(99, 2, 60), 60, "clamped from above")
+Test.equal(clamp(-4, 2, 60), 2, "clamped from below")
+Test.equal(clamp(17, 2, 60), 17, "left alone in range")
+
+// --- the frame buffer ------------------------------------------------------
+
+dec screen @@ Screen = open_screen()
+dec buffer @@ string = compose(screen, ["alpha", "beta"])
+
+Test.assert(String.find(buffer, "alpha") != naught, "the buffer keeps its lines")
+Test.assert(String.find(buffer, "beta") != naught, "all of them")
+Test.equal(size(String.split(buffer, "\n")), 2, "one line per line, joined not trailed")

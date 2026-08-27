@@ -1,0 +1,19 @@
+// Plain HTTP/1.1 is opt-in. JSON remains a separate, explicit capability.
+borrow Http
+borrow Json
+
+dec response @@ http_response = Http.get(
+  "jsonplaceholder.typicode.com",
+  80,
+  "/todos/1",
+  #{"Accept": "application/json"},
+  5000,
+  1048576)
+
+say("HTTP", response.status, response.reason)
+if response.text == naught $
+  raise("response body is not UTF-8")
+\$
+
+dec document @@ json = Json.parse(response.text.pour_into(string))
+say(Json.pretty(document, 2))

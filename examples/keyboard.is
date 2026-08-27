@@ -1,0 +1,23 @@
+// Interactive raw-key input. Press arrows or ordinary keys; q exits.
+
+borrow Keyboard
+borrow LengText
+
+Keyboard.open()
+LengText.screen_begin()
+
+attempt $
+  dec last @@ string = "press a key — q exits"
+  dec running @@ bool = true
+  aslongas running $
+    LengText.blit("Keyboard example\n\nlast: " + last)
+    dec key @@ perchance[string] = Keyboard.wait(100)
+    if key != naught $
+      last = key.pour_into(string)
+      if last == "q" $ running = false \$
+    \$
+  \$
+\$ always $
+  Keyboard.close()
+  LengText.screen_end()
+\$

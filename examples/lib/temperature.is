@@ -1,0 +1,21 @@
+// A stash is an ordinary Isen file. Nothing leaves it unless shared.
+dec freezing @@ float = 0.0
+
+form Reading $
+  celsius @@ float,
+  fahrenheit @@ float
+\$
+share Reading
+
+given celsius_to_fahrenheit(value @@ float) @@ float $
+  ret value * 1.8 + 32.0
+\$
+share celsius_to_fahrenheit
+
+given reading(value @@ float) @@ Reading $
+  ret Reading $
+    celsius: value,
+    fahrenheit: celsius_to_fahrenheit(value)
+  \$
+\$
+share reading

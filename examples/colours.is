@@ -1,0 +1,9 @@
+// LengText is not part of the default environment.
+borrow LengText
+
+say(LengText.green("all systems nominal"))
+say(LengText.blue("the river is cold"))
+say(LengText.yellow("the kettle is nearly ready"))
+say(LengText.red("this button looks consequential"))
+
+shout("tea reserves are becoming concerning")

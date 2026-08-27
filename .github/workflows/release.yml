@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Confirm tag matches Cargo version
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' Cargo.toml)
+          test -n "$version"
+          test "v$version" = "$GITHUB_REF_NAME"
+      - run: sh scripts/release-check.sh
+
+  package-linux:
+    name: Package Linux (x86_64, static)
+    needs: verify
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-musl
+      ASSET: isen-linux-x86_64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install --yes musl-tools
+      - run: cargo build --release --locked --target "$TARGET"
+      - run: "target/$TARGET/release/isen --version"
+      - name: Verify static linkage
+        run: |
+          linkage=$(ldd "target/$TARGET/release/isen" 2>&1 || true)
+          printf '%s\n' "$linkage"
+          printf '%s\n' "$linkage" | grep -Eq 'not a dynamic executable|statically linked'
+      - run: |
+          mkdir dist
+          cp "target/$TARGET/release/isen" dist/isen
+          cp LICENSE dist/LICENSE
+          tar -czf "$ASSET.tar.gz" -C dist isen LICENSE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: isen-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  package-macos:
+    name: Package macOS (Apple Silicon)
+    needs: verify
+    runs-on: macos-latest
+    env:
+      ASSET: isen-macos-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - run: test "$(uname -m)" = arm64
+      - run: cargo build --release --locked
+      - run: target/release/isen --version
+      - run: |
+          mkdir dist
+          cp target/release/isen dist/isen
+          cp LICENSE dist/LICENSE
+          tar -czf "$ASSET.tar.gz" -C dist isen LICENSE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: isen-macos-arm64.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - package-linux
+      - package-macos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-linux
+          path: release
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-macos
+          path: release
+      - name: Create checksums
+        run: sha256sum release/*.tar.gz > release/SHA256SUMS
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/*.tar.gz release/SHA256SUMS \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release/*.tar.gz release/SHA256SUMS \
+              --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
+              --title "Isen $GITHUB_REF_NAME"
+          fi

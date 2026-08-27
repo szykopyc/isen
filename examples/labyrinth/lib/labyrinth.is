@@ -1,0 +1,278 @@
+// lib/labyrinth.is
+//
+// A perfect labyrinth on an odd-sized glyph grid.
+//
+//   1 == wall, 0 == open.
+//   Cell (cx, cy) lives at glyph (2 * cx + 1, 2 * cy + 1) and the wall it
+//   knocks down is the glyph exactly between two cells.
+//
+// Numeric grids remain flat arrays; the traversal worklists use the mutable
+// Stack and Queue extensions.
+//
+// Animation note: `flood` already computes a distance for every reachable
+// glyph in one pass, and `trace` numbers the route from the entrance. A Scene
+// therefore carries two reveal limits, and drawing a frame is just rendering
+// the same arrays with a lower ceiling. No stepwise solver required.
+
+borrow Array
+borrow Maths
+borrow Random
+borrow List
+borrow Stack
+borrow Queue
+borrow LengText
+
+form Scene $
+  width @@ int,
+  height @@ int,
+  cells @@ arr[int],
+  distance @@ arr[int],
+  route @@ arr[int],
+  furthest @@ int,
+  flood_limit @@ int,
+  route_limit @@ int,
+  start @@ int,
+  goal @@ int,
+\$
+share Scene
+
+// Private: never shared, but the shared closures below keep hold of it.
+space Palette $
+  given band_of(distance @@ int, furthest @@ int) @@ int $
+    if furthest <= 0 $ ret 0 \$
+    ret distance * 4 / (furthest + 1)
+  \$
+
+  given tint(band @@ int, glyph @@ string) @@ string $
+    if band <= 0 $ ret LengText.red(glyph) \$
+    if band == 1 $ ret LengText.yellow(glyph) \$
+    if band == 2 $ ret LengText.green(glyph) \$
+    ret LengText.blue(glyph)
+  \$
+\$
+
+given clamp(value @@ int, low @@ int, high @@ int) @@ int $
+  ret Maths.min(Maths.max(value, low), high)
+\$
+share clamp
+
+// 0 north, 1 east, 2 south, 3 west.
+given step_x(direction @@ int) @@ int $
+  if direction == 1 $ ret 1 \$
+  if direction == 3 $ ret -1 \$
+  ret 0
+\$
+
+given step_y(direction @@ int) @@ int $
+  if direction == 0 $ ret -1 \$
+  if direction == 2 $ ret 1 \$
+  ret 0
+\$
+
+// Randomised depth-first carving with an explicit stack.
+given build_maze(cells_wide @@ int, cells_high @@ int) @@ arr[int] $
+  dec gw @@ int = cells_wide * 2 + 1
+  dec gh @@ int = cells_high * 2 + 1
+  dec cells @@ arr[int] = Array.int(gw * gh, 1)
+  dec total @@ int = cells_wide * cells_high
+  dec visited @@ arr[int] = Array.int(total, 0)
+  dec stack @@ list[int] = []
+  dec options @@ arr[int] = Array.int(4, 0)
+  Stack.push(stack, 0)
+  visited[0] = 1
+  cells[gw + 1] = 0
+
+  aslongas size(stack) > 0 $
+    dec current @@ int = stack[size(stack) - 1]
+    dec cx @@ int = current % cells_wide
+    dec cy @@ int = current / cells_wide
+    dec count @@ int = 0
+    dec d @@ int = 0
+
+    aslongas d < 4 $
+      dec ax @@ int = cx + step_x(d)
+      dec ay @@ int = cy + step_y(d)
+      if ax >= 0 && ax < cells_wide && ay >= 0 && ay < cells_high $
+        if visited[ay * cells_wide + ax] == 0 $
+          options[count] = d
+          count = count + 1
+        \$
+      \$
+      d = d + 1
+    \$
+
+    if count == 0 $
+      Stack.pop(stack)
+      onwards
+    \$
+
+    dec chosen @@ int = options[Random.int(0, count - 1)]
+    dec nx @@ int = cx + step_x(chosen)
+    dec ny @@ int = cy + step_y(chosen)
+    dec gx @@ int = cx * 2 + 1
+    dec gy @@ int = cy * 2 + 1
+
+    cells[(gy + step_y(chosen)) * gw + gx + step_x(chosen)] = 0
+    cells[(ny * 2 + 1) * gw + nx * 2 + 1] = 0
+    visited[ny * cells_wide + nx] = 1
+    Stack.push(stack, ny * cells_wide + nx)
+  \$
+
+  ret cells
+\$
+share build_maze
+
+// Breadth-first flood from the top-left cell. Fills `distance` and `previous`
+// in place and returns the distance to the far corner, or -1 if walled off.
+given flood(cells @@ arr[int], gw @@ int, gh @@ int, distance @@ arr[int], previous @@ arr[int]) @@ int $
+  dec queue @@ list[int] = []
+  dec start @@ int = gw + 1
+  dec goal @@ int = (gh - 2) * gw + gw - 2
+
+  distance[start] = 0
+  Queue.push(queue, start)
+
+  aslongas size(queue) > 0 $
+    dec here @@ int = Queue.pop(queue).pour_into(int)
+    dec hx @@ int = here % gw
+    dec hy @@ int = here / gw
+    dec d @@ int = 0
+
+    aslongas d < 4 $
+      dec ax @@ int = hx + step_x(d)
+      dec ay @@ int = hy + step_y(d)
+      d = d + 1
+      if ax < 0 || ax >= gw || ay < 0 || ay >= gh $ onwards \$
+      dec next @@ int = ay * gw + ax
+      if cells[next] == 1 $ onwards \$
+      if distance[next] >= 0 $ onwards \$
+      distance[next] = distance[here] + 1
+      previous[next] = here
+      Queue.push(queue, next)
+    \$
+  \$
+
+  ret distance[goal]
+\$
+share flood
+
+// Walk the parent chain back from the goal, then flip the numbering so the
+// entrance is 1 and the goal is `steps`. That ordering is what lets the
+// renderer reveal the solution one glyph at a time.
+given trace(previous @@ arr[int], route @@ arr[int], goal @@ int) @@ int $
+  dec here @@ int = goal
+  dec steps @@ int = 0
+  aslongas here >= 0 $
+    steps = steps + 1
+    route[here] = steps
+    here = previous[here]
+  \$
+
+  dec i @@ int = 0
+  dec count @@ int = size(route)
+  aslongas i < count $
+    if route[i] > 0 $ route[i] = steps + 1 - route[i] \$
+    i = i + 1
+  \$
+
+  ret steps
+\$
+share trace
+
+given largest(values @@ arr[int]) @@ int $
+  dec best @@ int = 0
+  dec i @@ int = 0
+  dec count @@ int = size(values)
+  aslongas i < count $
+    if values[i] > best $ best = values[i] \$
+    i = i + 1
+  \$
+  ret best
+\$
+share largest
+
+given open_count(cells @@ arr[int]) @@ int $
+  dec found @@ int = 0
+  dec i @@ int = 0
+  dec count @@ int = size(cells)
+  aslongas i < count $
+    if cells[i] == 0 $ found = found + 1 \$
+    i = i + 1
+  \$
+  ret found
+\$
+share open_count
+
+// A dead end is an open glyph with exactly one open neighbour.
+given dead_end_count(cells @@ arr[int], gw @@ int, gh @@ int) @@ int $
+  dec found @@ int = 0
+  dec y @@ int = 1
+  aslongas y < gh - 1 $
+    dec x @@ int = 1
+    aslongas x < gw - 1 $
+      if cells[y * gw + x] == 0 $
+        dec open @@ int = 0
+        dec d @@ int = 0
+        aslongas d < 4 $
+          if cells[(y + step_y(d)) * gw + x + step_x(d)] == 0 $ open = open + 1 \$
+          d = d + 1
+        \$
+        if open == 1 $ found = found + 1 \$
+      \$
+      x = x + 1
+    \$
+    y = y + 1
+  \$
+  ret found
+\$
+share dead_end_count
+
+// One frame. `flood_limit` hides glyphs the wave has not reached yet;
+// `route_limit` hides route glyphs not yet walked. Pass the furthest distance
+// and the full step count for a finished picture.
+given scene_of(cells @@ arr[int], distance @@ arr[int], route @@ arr[int], gw @@ int, gh @@ int, furthest @@ int, flood_limit @@ int, route_limit @@ int) @@ Scene $
+  dec frame @@ Scene = Scene $
+    width: gw,
+    height: gh,
+    cells: cells,
+    distance: distance,
+    route: route,
+    furthest: furthest,
+    flood_limit: flood_limit,
+    route_limit: route_limit,
+    start: gw + 1,
+    goal: (gh - 2) * gw + gw - 2
+  \$
+  ret frame
+\$
+share scene_of
+
+given render(scene @@ Scene) @@ list[string] $
+  dec rows @@ list[string] = []
+  dec y @@ int = 0
+  aslongas y < scene.height $
+    dec row @@ string = ""
+    dec x @@ int = 0
+    aslongas x < scene.width $
+      dec here @@ int = y * scene.width + x
+      if scene.cells[here] == 1 $
+        row = row + "██"
+      \$ else if here == scene.start $
+        row = row + LengText.yellow("▶▶")
+      \$ else if here == scene.goal $
+        row = row + LengText.red("◆◆")
+      \$ else if scene.route[here] > 0 && scene.route[here] <= scene.route_limit $
+        row = row + LengText.green("▓▓")
+      \$ else if scene.distance[here] < 0 || scene.distance[here] > scene.flood_limit $
+        row = row + "  "
+      \$ else $
+        row = row + Palette.tint(Palette.band_of(scene.distance[here], scene.furthest), "░░")
+      \$
+      x = x + 1
+    \$
+    rows = List.push(rows, row)
+    y = y + 1
+  \$
+  ret rows
+\$
+share render

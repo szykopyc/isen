@@ -1,0 +1,115 @@
+// Load a trained GRU checkpoint and ask for as many continuations as you like.
+// Run examples/gru_lm.is once to create the checkpoint.
+borrow Array
+borrow ML
+borrow File
+borrow Input
+borrow Map
+borrow String
+
+given is_stop(word @@ string) @@ bool $
+  ret word == "." || word == "!" || word == "?"
+\$
+
+given is_paragraph(word @@ string) @@ bool $
+  ret word == "<paragraph>"
+\$
+
+given word_id(ids @@ map[string, int], word @@ string) @@ int $
+  if Map.has(ids, word) $ ret ids[word] \$
+  ret 0  // unk
+\$
+
+given append_word(string @@ string, word @@ string) @@ string $
+  if is_paragraph(word) $ ret string + "\n\n" \$
+  if is_stop(word) $ ret string + word \$
+  if string == "" $ ret word \$
+  ret string + " " + word
+\$
+
+dec checkpoint_path @@ string = ".isen/gru_checkpoint"
+dec metadata @@ list[string] = File.lines(checkpoint_path + "/metadata.txt")
+if size(metadata) != 2 $
+  say("invalid GRU checkpoint metadata in", checkpoint_path)
+  ret 0
+\$
+dec width @@ int = metadata[0].pour_into(int64)
+dec expected_vocabulary @@ int = metadata[1].pour_into(int64)
+dec vocabulary_words @@ list[string] = File.lines(checkpoint_path + "/vocabulary.txt")
+dec vocabulary @@ int = size(vocabulary_words)
+if vocabulary != expected_vocabulary $
+  say("checkpoint vocabulary does not match its metadata")
+  ret 0
+\$
+
+dec ids @@ map[string, int] = Map.string_int()
+dec vocabulary_index @@ int = 0
+aslongas vocabulary_index < vocabulary $
+  ids[vocabulary_words[vocabulary_index]] = vocabulary_index
+  vocabulary_index = vocabulary_index + 1
+\$
+
+dec embedding @@ arr[float] = Array.load_float(checkpoint_path + "/embedding.bin")
+dec update_input @@ arr[float] = Array.load_float(checkpoint_path + "/update_input.bin")
+dec update_state @@ arr[float] = Array.load_float(checkpoint_path + "/update_state.bin")
+dec update_bias @@ arr[float] = Array.load_float(checkpoint_path + "/update_bias.bin")
+dec reset_input @@ arr[float] = Array.load_float(checkpoint_path + "/reset_input.bin")
+dec reset_state @@ arr[float] = Array.load_float(checkpoint_path + "/reset_state.bin")
+dec reset_bias @@ arr[float] = Array.load_float(checkpoint_path + "/reset_bias.bin")
+dec candidate_input @@ arr[float] = Array.load_float(checkpoint_path + "/candidate_input.bin")
+dec candidate_state @@ arr[float] = Array.load_float(checkpoint_path + "/candidate_state.bin")
+dec candidate_bias @@ arr[float] = Array.load_float(checkpoint_path + "/candidate_bias.bin")
+dec output @@ arr[float] = Array.load_float(checkpoint_path + "/output.bin")
+dec output_bias @@ arr[float] = Array.load_float(checkpoint_path + "/output_bias.bin")
+
+if size(embedding) != vocabulary * width || size(output) != vocabulary * width ||
+size(output_bias) != vocabulary $
+  say("checkpoint arrays do not match its vocabulary or width")
+  ret 0
+\$
+
+dec state @@ arr[float] = Array.float(width, 0.0)
+dec previous @@ arr[float] = Array.float(width, 0.0)
+dec update_gate @@ arr[float] = Array.float(width, 0.0)
+dec reset_gate @@ arr[float] = Array.float(width, 0.0)
+dec proposed @@ arr[float] = Array.float(width, 0.0)
+
+given complete(prompt @@ string) @@ string $
+  Array.fill(state, 0, width, 0.0)
+  dec prompt_tokens @@ list[string] = String.tokens(String.lower(prompt))
+  dec prompt_index @@ int = 0
+  dec last @@ int = 0
+  aslongas prompt_index < size(prompt_tokens) $
+    last = word_id(ids, prompt_tokens[prompt_index])
+    ML.gru_forward(state, previous, update_gate, reset_gate, proposed,
+      embedding, last,
+      update_input, update_state, update_bias,
+      reset_input, reset_state, reset_bias,
+      candidate_input, candidate_state, candidate_bias, width)
+    prompt_index = prompt_index + 1
+  \$
+
+  dec generated @@ string = ""
+  dec step @@ int = 0
+  aslongas step < 80 $
+    dec next @@ int = ML.softmax_sample(output, output_bias, state,
+      vocabulary, width, 0.70, last, 1.6)
+    dec word @@ string = vocabulary_words[next]
+    generated = append_word(generated, word)
+    last = next
+    if is_paragraph(word) $ Array.fill(state, 0, width, 0.0) \$
+    ML.gru_forward(state, previous, update_gate, reset_gate, proposed,
+      embedding, next,
+      update_input, update_state, update_bias,
+      reset_input, reset_state, reset_bias,
+      candidate_input, candidate_state, candidate_bias, width)
+    step = step + 1
+  \$
+  ret generated
+\$
+
+say("loaded GRU checkpoint with", vocabulary, "words and width", width)
+say("ask for a continuation; type /quit to leave")
+aslongas (dec prompt @@ string = Input.line("\nyou @@ ")) != "/quit" $
+  say("model @@", complete(prompt))
+\$

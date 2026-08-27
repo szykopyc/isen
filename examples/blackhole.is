@@ -1,0 +1,406 @@
+// examples/event_horizon.is
+//
+// Animated ASCII black hole / accretion disk.
+//
+// The entire frame is rendered into string before touching the terminal,
+// which avoids the nasty line-by-line flicker of progressively drawing
+// directly to stdout.
+//
+// Run:
+//   ./isen examples/event_horizon.is
+
+borrow Maths
+borrow Time
+borrow LengText
+
+// ---------------------------------------------------------------- settings
+
+dec width @@ int = 92
+dec height @@ int = 34
+
+dec total_frames @@ int = 1200
+
+// 40ms ~= 25 FPS.
+//
+// If the interpreter takes longer than this to render a frame, we simply
+// present it immediately rather than sleeping on top of the render time.
+
+# dec frame_budget @@ int = 40
+dec frame_budget @@ int = 16
+// ---------------------------------------------------------------- rendering helpers
+
+given glyph(value @@ float) @@ string $
+  if value > 0.92 $ ret "@" \$
+  if value > 0.78 $ ret "#" \$
+  if value > 0.62 $ ret "*" \$
+  if value > 0.46 $ ret "+" \$
+  if value > 0.30 $ ret ":" \$
+  if value > 0.15 $ ret "." \$
+
+  ret " "
+\$
+
+given disk_glyph(value @@ float, x @@ float, radius @@ float) @@ string $
+  dec symbol @@ string = glyph(value)
+
+  // Inner disk = hotter. Outer disk = cooler.
+  dec heat @@ float = 1.0 - ((radius - 8.0) / 9.0)
+
+  if heat < 0.0 $ heat = 0.0 \$
+  if heat > 1.0 $ heat = 1.0 \$
+
+  // Doppler bias:
+  // one side shifts hotter, the other cooler.
+  dec doppler @@ float = 0.0
+
+  if x > 0.0 $
+    doppler = 0.12
+  \$ else $
+    doppler = -0.08
+  \$
+
+  dec colour @@ float = heat + doppler
+
+  if colour > 0.92 $
+    ret LengText.bright_white(symbol)
+  \$
+
+  if colour > 0.82 $
+    ret LengText.bright_yellow(symbol)
+  \$
+
+  if colour > 0.72 $
+    ret LengText.gold(symbol)
+  \$
+
+  if colour > 0.62 $
+    ret LengText.orange(symbol)
+  \$
+
+  if colour > 0.52 $
+    ret LengText.lime(symbol)
+  \$
+
+  if colour > 0.42 $
+    ret LengText.teal(symbol)
+  \$
+
+  if colour > 0.32 $
+    ret LengText.bright_cyan(symbol)
+  \$
+
+  if colour > 0.22 $
+    ret LengText.sky(symbol)
+  \$
+
+  if colour > 0.12 $
+    ret LengText.blue(symbol)
+  \$
+
+  if x < 0.0 $
+    ret LengText.purple(symbol)
+  \$
+
+  ret LengText.violet(symbol)
+\$
+
+given star(x @@ float, y @@ float, time @@ float) @@ bool $
+  // Deterministic pseudo-noise.
+  //
+  // The tiny time term lets the field shimmer slightly without making
+  // the entire background visibly crawl.
+  dec noise @@ float = Maths.abs(
+    Maths.sin(
+    x * 12.9898 +
+    y * 78.233 +
+    time * 0.013
+    )
+  )
+
+  ret noise > 0.996
+\$
+
+given lens_star(
+  x @@ float,
+  y @@ float,
+  radius @@ float,
+  time @@ float
+) @@ string $
+
+  // Crude gravitational lensing:
+  // stars close to the hole can smear into little arcs.
+  if radius < 8.0 && radius > 4.1 $
+    dec warped @@ float = Maths.abs(
+      Maths.sin(
+      x * y * 0.35 +
+      radius * 2.7 -
+      time * 0.8
+      )
+    )
+    if warped > 0.97 $
+      ret LengText.bright_cyan("*")
+    \$
+
+    if warped > 0.94 $
+      ret LengText.sky(".")
+    \$
+
+    if warped > 0.91 $
+      ret LengText.violet(".")
+    \$
+  \$
+
+  if star(x, y, time) $
+    ret "."
+  \$
+
+  ret " "
+\$
+
+given progress(done @@ int, total @@ int, cells @@ int) @@ string $
+  dec filled @@ int = done * cells / total
+  dec result @@ string = "["
+
+  dec index @@ int = 0
+  aslongas index < cells $
+    if index < filled $
+      result = result + "="
+    \$ else $
+      result = result + " "
+    \$
+
+    index = index + 1
+  \$
+
+  ret result + "]"
+\$
+
+// ---------------------------------------------------------------- animation
+
+dec frame @@ int = 0
+dec previous_render_ms @@ int = 0
+
+aslongas frame < total_frames $
+  dec started @@ int = Time.clock()
+
+  dec t @@ float = frame.pour_into(float) * 0.055
+
+  // Everything goes into this buffer first.
+  //
+  // We do NOT clear the terminal until this whole value is ready.
+  dec frame_text @@ string = ""
+
+  // -------------------------------------------------------------- header
+
+  frame_text = frame_text +
+  LengText.blue("ISEN EVENT HORIZON") +
+  "    frame " +
+  frame.pour_into(string) +
+  "/" +
+  total_frames.pour_into(string) +
+  "    previous render " +
+  previous_render_ms.pour_into(string) +
+  "ms\n"
+
+  frame_text = frame_text +
+  LengText.yellow("gravity is merely a suggestion") +
+  "\n\n"
+
+  // -------------------------------------------------------------- universe
+
+  dec screen_y @@ int = 0
+
+  aslongas screen_y < height $
+    dec row @@ string = ""
+    dec screen_x @@ int = 0
+
+    aslongas screen_x < width $
+
+      // ------------------------------------------------ coordinates
+
+      dec x @@ float =
+      screen_x.pour_into(float) -
+      width.pour_into(float) / 2.0
+
+      dec y @@ float =
+      screen_y.pour_into(float) -
+      height.pour_into(float) / 2.0
+
+      // Terminal cells are not square, so correct the aspect ratio.
+      dec sx @@ float = x * 0.48
+      dec sy @@ float = y * 0.90
+
+      dec radius @@ float = Maths.sqrt(
+        sx * sx +
+        sy * sy
+      )
+
+      dec pixel @@ string = " "
+
+      // ------------------------------------------------ background
+
+      pixel = lens_star(
+        sx,
+        sy,
+        radius,
+        t
+      )
+
+      // ------------------------------------------------ photon ring
+
+      if radius >= 4.0 && radius < 4.65 $
+        dec photon_wave @@ float = Maths.abs(
+          Maths.sin(
+          radius * 14.0 -
+          t * 3.0 +
+          sx * 0.4
+          )
+        )
+
+        if photon_wave > 0.88 $
+          pixel = LengText.bright_white("@")
+        \$ else if photon_wave > 0.68 $
+          pixel = LengText.bright_yellow("#")
+        \$ else if photon_wave > 0.48 $
+          pixel = LengText.gold("*")
+        \$ else if photon_wave > 0.28 $
+          pixel = LengText.orange("+")
+        \$
+      \$
+
+      // ------------------------------------------------ accretion disk
+
+      // Stretch Y strongly so a circular disk appears edge-on.
+      dec disc_y @@ float = sy * 3.7
+
+      dec disc_radius @@ float = Maths.sqrt(
+        sx * sx +
+        disc_y * disc_y
+      )
+
+      // Several cheap waves interfere to make the disk look turbulent.
+      dec turbulence @@ float = Maths.sin(
+        disc_radius * 2.3 -
+        t * 3.4 +
+        Maths.sin(
+        sx * 0.65 +
+        t
+        )
+      )
+
+      dec ripple @@ float =
+      Maths.cos(
+        sx * 0.82 -
+        t * 2.1
+      ) * 0.22
+
+      dec brightness @@ float =
+      Maths.abs(
+        turbulence +
+        ripple
+      )
+
+      if disc_radius > 8.0 && disc_radius < 17.0 $
+        if brightness > 0.22 $
+          pixel = disk_glyph(brightness, sx, disc_radius)
+        \$
+      \$
+
+      // ------------------------------------------------ hot inner edge
+      if disc_radius >= 6.7 && disc_radius <= 8.0 $
+        dec inner @@ float = Maths.abs(
+          Maths.sin(
+          sx * 1.7 +
+          t * 4.5
+          )
+        )
+
+        if inner > 0.82 $
+          pixel = LengText.bright_white("@")
+        \$ else if inner > 0.65 $
+          pixel = LengText.bright_yellow("#")
+        \$ else if inner > 0.48 $
+          pixel = LengText.gold("*")
+        \$ else if inner > 0.35 $
+          pixel = LengText.orange("+")
+        \$
+      \$
+
+      // ------------------------------------------------ event horizon
+
+      // Nothing escapes.
+      //
+      // Including ASCII.
+      if radius < 4.0 $
+        pixel = " "
+      \$
+
+      // Tiny intermittent edge shimmer so the silhouette feels alive.
+      if radius >= 3.75 && radius < 4.0 $
+        dec edge @@ float = Maths.abs(
+          Maths.sin(
+          sx * 4.0 +
+          sy * 3.0 +
+          t
+          )
+        )
+
+        if edge > 0.96 $
+          pixel = LengText.bright_magenta("*")
+        \$ else if edge > 0.91 $
+          pixel = LengText.purple(".")
+        \$ else if edge > 0.88 $
+          pixel = LengText.violet(".")
+        \$
+      \$
+
+      row = row + pixel
+      screen_x = screen_x + 1
+    \$
+
+    frame_text = frame_text + row + "\n"
+    screen_y = screen_y + 1
+  \$
+
+  // -------------------------------------------------------------- HUD
+
+  dec render_ms @@ int = Time.since(started)
+
+  frame_text = frame_text +
+  "\nmass: " +
+  LengText.yellow("6.5 billion suns") +
+  "    stability: " +
+  LengText.green("probably") +
+  "\n"
+
+  frame_text = frame_text +
+  "render: " +
+  render_ms.pour_into(string) +
+  "ms    target: " +
+  frame_budget.pour_into(string) +
+  "ms    " +
+  progress(frame, total_frames, 36)
+
+  // -------------------------------------------------------------- present
+
+  // This is the important bit:
+  //
+  // only now, after the complete next frame exists, do we clear the old one.
+  LengText.flush()
+  say(frame_text)
+
+  previous_render_ms = render_ms
+
+  // Maintain a roughly fixed frame period instead of always sleeping an
+  // additional fixed amount after rendering.
+  dec spent @@ int = Time.since(started)
+
+  if spent < frame_budget $
+    Time.sleep(frame_budget - spent)
+  \$
+
+  frame = frame + 1
+\$
+
+LengText.flush()
+say(LengText.green("the singularity has been safely turned off."))

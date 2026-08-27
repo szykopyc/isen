@@ -1,0 +1,6 @@
+// Borrow only the pieces this programme wants from the temperature stash.
+borrow Reading from "lib/temperature.is"
+borrow reading from "lib/temperature.is"
+
+dec today @@ Reading = reading(20.0)
+say(today.celsius, "C is", today.fahrenheit, "F")

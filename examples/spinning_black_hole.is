@@ -1,0 +1,439 @@
+// examples/spinning_black_hole.is
+//
+// A spinning terminal black hole with an orbiting accretion disk,
+// crude frame dragging, Doppler colour shift, lensing arcs,
+// and a rotating photon ring.
+//
+// Run:
+//   ./isen examples/spinning_black_hole.is
+//
+// Ctrl-C when spacetime has had enough.
+
+borrow Maths
+borrow Time
+borrow LengText
+
+// --------------------------------------------------------------- settings
+
+dec width @@ int = 96
+dec height @@ int = 36
+
+dec total_frames @@ int = 2000
+dec frame_budget @@ int = 40
+
+// Rotation speed of the accretion structure.
+dec spin_rate @@ float = 0.11
+
+// Event horizon radius.
+dec horizon @@ float = 4.0
+
+// --------------------------------------------------------------- helpers
+
+given glyph(value @@ float) @@ string $
+  if value > 0.92 $ ret "@" \$
+  if value > 0.78 $ ret "#" \$
+  if value > 0.62 $ ret "*" \$
+  if value > 0.46 $ ret "+" \$
+  if value > 0.30 $ ret ":" \$
+  if value > 0.15 $ ret "." \$
+  ret " "
+\$
+
+given clamp(value @@ float, low @@ float, high @@ float) @@ float $
+  if value < low $ ret low \$
+  if value > high $ ret high \$
+  ret value
+\$
+
+given colour_disk(
+  symbol @@ string,
+  heat @@ float,
+  velocity @@ float
+) @@ string $
+
+  // Approaching material gets pushed visually "hotter",
+  // receding material gets pushed cooler.
+  dec shifted @@ float = heat + velocity * 0.20
+  shifted = clamp(shifted, 0.0, 1.2)
+
+  if shifted > 1.00 $
+    ret LengText.bright_white(symbol)
+  \$
+
+  if shifted > 0.88 $
+    ret LengText.bright_yellow(symbol)
+  \$
+
+  if shifted > 0.76 $
+    ret LengText.gold(symbol)
+  \$
+
+  if shifted > 0.64 $
+    ret LengText.orange(symbol)
+  \$
+
+  if shifted > 0.52 $
+    ret LengText.lime(symbol)
+  \$
+
+  if shifted > 0.40 $
+    ret LengText.teal(symbol)
+  \$
+
+  if shifted > 0.28 $
+    ret LengText.bright_cyan(symbol)
+  \$
+
+  if shifted > 0.18 $
+    ret LengText.sky(symbol)
+  \$
+
+  if shifted > 0.08 $
+    ret LengText.blue(symbol)
+  \$
+
+  if velocity < 0.0 $
+    ret LengText.purple(symbol)
+  \$
+
+  ret LengText.violet(symbol)
+\$
+
+given star_field(x @@ float, y @@ float) @@ bool $
+  dec noise @@ float = Maths.abs(
+    Maths.sin(
+    x * 12.9898 +
+    y * 78.233 +
+    19.191
+    )
+  )
+
+  ret noise > 0.996
+\$
+
+given lensed_star(
+  x @@ float,
+  y @@ float,
+  radius @@ float,
+  angle @@ float,
+  t @@ float
+) @@ string $
+
+  if radius > 4.2 && radius < 9.0 $
+    // Crude frame dragging:
+    // near the hole, angular position gets twisted forward.
+    dec drag @@ float = (9.0 - radius) * 0.22
+    dec warped_angle @@ float = angle + t * drag
+
+    dec arc @@ float = Maths.abs(
+      Maths.sin(
+      warped_angle * 7.0 +
+      radius * 3.0
+      )
+    )
+
+    if arc > 0.975 $
+      ret LengText.bright_cyan("*")
+    \$
+
+    if arc > 0.94 $
+      ret LengText.sky(".")
+    \$
+
+    if arc > 0.91 $
+      ret LengText.violet(".")
+    \$
+  \$
+
+  if star_field(x, y) $
+    ret "."
+  \$
+
+  ret " "
+\$
+
+given progress(done @@ int, total @@ int, cells @@ int) @@ string $
+  dec filled @@ int = done * cells / total
+  dec result @@ string = "["
+
+  dec i @@ int = 0
+  aslongas i < cells $
+    if i < filled $
+      result = result + "="
+    \$ else $
+      result = result + " "
+    \$
+
+    i = i + 1
+  \$
+
+  ret result + "]"
+\$
+
+// --------------------------------------------------------------- animation
+
+dec frame @@ int = 0
+dec previous_ms @@ int = 0
+
+aslongas frame < total_frames $
+  dec started @@ int = Time.clock()
+
+  dec t @@ float = frame.pour_into(float) * spin_rate
+
+  dec picture @@ string = ""
+
+  picture = picture +
+  LengText.bright_cyan("ISEN KERR-ish SINGULARITY") +
+  "    frame " +
+  frame.pour_into(string) +
+  "/" +
+  total_frames.pour_into(string) +
+  "    previous " +
+  previous_ms.pour_into(string) +
+  "ms\n"
+
+  picture = picture +
+  LengText.violet("frame dragging enabled. physics complaints accepted nowhere.") +
+  "\n\n"
+
+  dec syi @@ int = 0
+
+  aslongas syi < height $
+    dec row @@ string = ""
+    dec sxi @@ int = 0
+
+    aslongas sxi < width $
+
+      // ------------------------------------------------ coordinates
+
+      dec x @@ float =
+      sxi.pour_into(float) -
+      width.pour_into(float) / 2.0
+
+      dec y @@ float =
+      syi.pour_into(float) -
+      height.pour_into(float) / 2.0
+
+      dec sx @@ float = x * 0.48
+      dec sy @@ float = y * 0.90
+
+      dec radius @@ float = Maths.sqrt(
+        sx * sx +
+        sy * sy
+      )
+
+      // Cheap angular approximation using sin/cos relationships.
+      //
+      // We don't have atan2, so we generate angular structure directly
+      // from rotated Cartesian coordinates below instead.
+      dec cos_t @@ float = Maths.cos(t)
+      dec sin_t @@ float = Maths.sin(t)
+
+      dec rx @@ float =
+      sx * cos_t -
+      sy * sin_t
+
+      dec ry @@ float =
+      sx * sin_t +
+      sy * cos_t
+
+      dec pixel @@ string = " "
+
+      // ------------------------------------------------ stars
+
+      pixel = lensed_star(
+        sx,
+        sy,
+        radius,
+        rx * 0.15 + ry * 0.11,
+        t
+      )
+
+      // ------------------------------------------------ photon ring
+
+      // The ring itself appears to rotate because its brightness
+      // pattern is phase-shifted over time.
+      if radius >= horizon && radius < horizon + 0.75 $
+        dec ring_wave @@ float = Maths.abs(
+          Maths.sin(
+          rx * 1.5 +
+          ry * 2.3 -
+          t * 8.0
+          )
+        )
+
+        if ring_wave > 0.92 $
+          pixel = LengText.bright_white("@")
+        \$ else if ring_wave > 0.76 $
+          pixel = LengText.bright_yellow("#")
+        \$ else if ring_wave > 0.58 $
+          pixel = LengText.gold("*")
+        \$ else if ring_wave > 0.40 $
+          pixel = LengText.orange("+")
+        \$
+      \$
+
+      // ------------------------------------------------ spinning disk
+
+      // Flattened geometry for an edge-on accretion disk.
+      dec disk_y @@ float = ry * 3.6
+
+      dec disk_radius @@ float = Maths.sqrt(
+        rx * rx +
+        disk_y * disk_y
+      )
+
+      // Spiral structure:
+      //
+      // instead of making the disk just pulse radially, tie the pattern
+      // to the rotated coordinates so matter visibly appears to orbit.
+      dec spiral @@ float = Maths.sin(
+        disk_radius * 2.0 +
+        rx * 0.55 -
+        ry * 0.22 -
+        t * 5.5
+      )
+
+      dec shear @@ float = Maths.sin(
+        rx * 0.90 +
+        disk_radius * 1.1 -
+        t * 7.0
+      ) * 0.35
+
+      dec turbulence @@ float = Maths.abs(
+        spiral +
+        shear
+      )
+
+      if disk_radius > 7.5 && disk_radius < 18.5 $
+        if turbulence > 0.24 $
+
+          dec symbol @@ string = glyph(turbulence)
+
+          // Inner parts are hotter.
+          dec heat @@ float =
+          1.0 - ((disk_radius - 7.5) / 11.0)
+
+          heat = clamp(heat, 0.0, 1.0)
+
+          // The rotated X coordinate acts as a crude line-of-sight
+          // orbital velocity: one side comes toward us, one recedes.
+          dec velocity @@ float = rx / 18.5
+          velocity = clamp(velocity, -1.0, 1.0)
+
+          pixel = colour_disk(
+            symbol,
+            heat,
+            velocity
+          )
+        \$
+      \$
+
+      // ------------------------------------------------ inner disk
+
+      if disk_radius >= 6.2 && disk_radius <= 7.5 $
+        dec inner_wave @@ float = Maths.abs(
+          Maths.sin(
+          rx * 2.4 +
+          ry * 1.3 -
+          t * 9.0
+          )
+        )
+
+        if inner_wave > 0.88 $
+          pixel = LengText.bright_white("@")
+        \$ else if inner_wave > 0.70 $
+          pixel = LengText.bright_yellow("#")
+        \$ else if inner_wave > 0.50 $
+          pixel = LengText.gold("*")
+        \$ else if inner_wave > 0.34 $
+          pixel = LengText.orange("+")
+        \$
+      \$
+
+      // ------------------------------------------------ frame-dragging arcs
+
+      if radius > 4.5 && radius < 10.5 $
+        dec drag_strength @@ float =
+        (10.5 - radius) / 6.0
+
+        dec drag_wave @@ float = Maths.abs(
+          Maths.sin(
+          rx * 0.7 +
+          ry * 1.7 -
+          t * (3.0 + drag_strength * 8.0)
+          )
+        )
+
+        if drag_wave > 0.985 $
+          pixel = LengText.bright_magenta("*")
+        \$ else if drag_wave > 0.96 $
+          pixel = LengText.purple(".")
+        \$
+      \$
+
+      // ------------------------------------------------ horizon
+
+      // Absolute darkness.
+      if radius < horizon $
+        pixel = " "
+      \$
+
+      // Rotating horizon shimmer.
+      if radius >= horizon - 0.18 && radius < horizon $
+        dec shimmer @@ float = Maths.abs(
+          Maths.sin(
+          rx * 3.5 +
+          ry * 4.0 -
+          t * 11.0
+          )
+        )
+
+        if shimmer > 0.965 $
+          pixel = LengText.bright_magenta("*")
+        \$ else if shimmer > 0.92 $
+          pixel = LengText.violet(".")
+        \$
+      \$
+
+      row = row + pixel
+      sxi = sxi + 1
+    \$
+
+    picture = picture + row + "\n"
+    syi = syi + 1
+  \$
+
+  dec render_ms @@ int = Time.since(started)
+
+  picture = picture +
+  "\nspin: " +
+  LengText.orange("obscene") +
+  "    horizon: " +
+  horizon.pour_into(string) +
+  "    render: " +
+  render_ms.pour_into(string) +
+  "ms\n"
+
+  picture = picture +
+  "status: " +
+  LengText.green("still violating common sense") +
+  "    " +
+  progress(frame, total_frames, 34)
+
+  LengText.flush()
+  say(picture)
+
+  previous_ms = render_ms
+
+  dec spent @@ int = Time.since(started)
+
+  if spent < frame_budget $
+    Time.sleep(frame_budget - spent)
+  \$
+
+  frame = frame + 1
+\$
+
+LengText.flush()
+say(LengText.green("spacetime has reluctantly stopped rotating."))

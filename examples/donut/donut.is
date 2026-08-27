@@ -1,0 +1,169 @@
+// donut.is
+//
+//   a spinning, lit, depth-buffered torus
+//   rendered by a tree-walking interpreter
+//   in a language where you end a block with \$
+//
+// Run it:  ./isen examples/donut/donut.is
+//
+// Projection, lighting, buffering, and animation are all Isen. Maths supplies
+// scalar trigonometry while the local Wheel stash precomputes it outside the
+// hot rendering loop.
+
+borrow Maths
+borrow Time
+borrow LengText
+
+borrow Canvas from "lib/canvas.is"
+borrow new_canvas from "lib/canvas.is"
+borrow wipe from "lib/canvas.is"
+borrow plot from "lib/canvas.is"
+borrow render from "lib/canvas.is"
+
+borrow Wheel from "lib/tables.is"
+borrow wheel from "lib/tables.is"
+
+// ---------------------------------------------------------------- settings
+
+dec view_width @@ int = 78
+dec view_height @@ int = 26
+
+// Points sampled around the tube, and around the hole. Raise these for a
+// denser surface, lower them if your terminal is chugging.
+dec ring_steps @@ int = 72
+dec sweep_steps @@ int = 180
+
+dec spin_steps @@ int = 360
+dec total_frames @@ int = 480
+dec frame_budget @@ int = 40
+
+dec ring_radius @@ float = 1.0
+dec hole_radius @@ float = 2.0
+dec viewer @@ float = 5.0
+
+// Index 0 is blank; the rest run from barely-lit to glaring.
+dec palette @@ list[string] = [" ", ".", ",", "-", "~", ":", ";", "=", "!", "*", "#", "&", "@"]
+
+// ---------------------------------------------------------------- the torus
+
+// A point on the tube is swept around the hole, tumbled by two rotations,
+// projected onto the screen, and shaded by how squarely its surface normal
+// faces the light coming over the viewer's shoulder.
+//
+// Rotation angles arrive as indices into the spin wheel, so this whole
+// function never calls a trigonometric function -- it only reads arrays.
+given render_torus(canvas @@ Canvas, ring @@ Wheel, sweep @@ Wheel, spin @@ Wheel, a_index @@ int, b_index @@ int) @@ unit $
+  dec sin_a @@ float = spin.sines[a_index]
+  dec cos_a @@ float = spin.cosines[a_index]
+  dec sin_b @@ float = spin.sines[b_index]
+  dec cos_b @@ float = spin.cosines[b_index]
+
+  dec half_width @@ float = canvas.width.pour_into(float) / 2.0
+  dec half_height @@ float = canvas.height.pour_into(float) / 2.0
+
+  // The widest the shape can ever appear is span / sqrt(viewer^2 - span^2),
+  // so we can size it to the terminal exactly instead of guessing a constant.
+  // Characters are about twice as tall as they are wide, hence the doubling.
+  dec span @@ float = ring_radius + hole_radius
+  dec reach @@ float = span / Maths.sqrt(viewer * viewer - span * span)
+  dec scale_y @@ float = (half_height - 1.0) / reach
+  dec scale_x @@ float = scale_y * 2.0
+  if scale_x * reach > half_width - 1.0 $
+    scale_x = (half_width - 1.0) / reach
+  \$
+
+  dec i @@ int = 0
+  aslongas i < ring.steps $
+    dec sin_t @@ float = ring.sines[i]
+    dec cos_t @@ float = ring.cosines[i]
+    dec circle_x @@ float = hole_radius + ring_radius * cos_t
+    dec circle_y @@ float = ring_radius * sin_t
+
+    dec j @@ int = 0
+    aslongas j < sweep.steps $
+      dec sin_p @@ float = sweep.sines[j]
+      dec cos_p @@ float = sweep.cosines[j]
+
+      dec distance @@ float = viewer + cos_a * circle_x * sin_p + circle_y * sin_a
+      dec nearness @@ float = 1.0 / distance
+
+      dec world_x @@ float = circle_x * (cos_b * cos_p + sin_a * sin_b * sin_p) - circle_y * cos_a * sin_b
+      dec world_y @@ float = circle_x * (sin_b * cos_p - sin_a * cos_b * sin_p) + circle_y * cos_a * cos_b
+
+      dec light @@ float = cos_p * cos_t * sin_b - cos_a * cos_t * sin_p - sin_a * sin_t + cos_b * (cos_a * sin_t - cos_t * sin_a * sin_p)
+
+      // Negative light means the surface is facing away. Skip it entirely and
+      // the depth buffer never even hears about the far side.
+      if light > 0.0 $
+        dec screen_x @@ int = (half_width + scale_x * nearness * world_x).pour_into(int)
+        dec screen_y @@ int = (half_height - scale_y * nearness * world_y).pour_into(int)
+        dec level @@ int = (light * 8.0).pour_into(int) + 1
+        plot(canvas, screen_x, screen_y, nearness, level)
+      \$
+      j = j + 1
+    \$
+    i = i + 1
+  \$
+\$
+
+// ------------------------------------------------------------------ garnish
+
+given tint(index @@ int, value @@ string) @@ string $
+  if index == 0 $ ret LengText.yellow(value) \$
+  if index == 1 $ ret LengText.blue(value) \$
+  if index == 2 $ ret LengText.yellow(value) \$
+  ret LengText.green(value)
+\$
+
+given bar(done @@ int, total @@ int, cells @@ int) @@ string $
+  dec filled @@ int = done * cells / total
+  dec inside @@ string = ""
+  dec i @@ int = 0
+  aslongas i < cells $
+    if i < filled $
+      inside = inside + "="
+    \$ else $
+      inside = inside + " "
+    \$
+    i = i + 1
+  \$
+  ret "[" + inside + "]"
+\$
+
+// --------------------------------------------------------------- the lathe
+
+say("warming up the lathe. computing", (ring_steps + sweep_steps + spin_steps).pour_into(string), "angles the hard way...")
+
+dec canvas @@ Canvas = new_canvas(view_width, view_height)
+dec ring @@ Wheel = wheel(ring_steps)
+dec sweep @@ Wheel = wheel(sweep_steps)
+dec spin @@ Wheel = wheel(spin_steps)
+
+dec frame @@ int = 0
+dec a_index @@ int = 0
+dec b_index @@ int = 0
+
+aslongas frame < total_frames $
+  dec started @@ int = Time.clock()
+
+  wipe(canvas)
+  render_torus(canvas, ring, sweep, spin, a_index, b_index)
+  dec picture @@ string = render(canvas, palette)
+
+  LengText.flush()
+  say(tint(frame / 60 % 4, picture))
+  say("  frame", frame.pour_into(string) + "/" + total_frames.pour_into(string), bar(frame, total_frames, 40))
+
+  // Two coprime-ish speeds, so the tumble never quite repeats.
+  a_index = (a_index + 5) % spin.steps
+  b_index = (b_index + 2) % spin.steps
+  frame = frame + 1
+
+  dec spent @@ int = Time.since(started)
+  if spent < frame_budget $
+    Time.sleep(frame_budget - spent)
+  \$
+\$
+
+LengText.flush()
+say(LengText.green("that is enough spinning. ta."))

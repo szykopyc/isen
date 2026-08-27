@@ -1,0 +1,9 @@
+/isen.exe
+.isen/
+/target/
+/labyrinth/mnt/
+
+.DS_Store
+.nvimlog
+
+/notes/

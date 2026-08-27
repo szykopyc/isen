@@ -1,0 +1,55 @@
+// One compact JSON object per line. No colours or terminal behaviour.
+
+borrow Json
+borrow Logger from "core.is"
+borrow LogEvent from "core.is"
+borrow make_logger from "core.is"
+borrow make_event from "core.is"
+borrow enabled from "core.is"
+borrow emit from "core.is"
+
+given logger(minimum @@ string, stdout @@ bool, file @@ perchance[string]) @@ Logger $
+  ret make_logger(minimum, stdout, file)
+\$
+
+given render(event @@ LogEvent) @@ string $
+  dec fields @@ map[string, json] = #{
+    "timestamp": Json.string(event.timestamp),
+    "level": Json.string(event.label),
+    "message": Json.string(event.message),
+    "context": Json.strings(event.context)
+  }
+  ret Json.stringify(Json.object(fields))
+\$
+
+given write(logger @@ Logger, level @@ int, label @@ string, message @@ string, context @@ map[string, string]) @@ unit $
+  dec event @@ LogEvent = make_event(level, label, message, context)
+  if enabled(logger, event) $
+    dec line @@ string = render(event)
+    emit(logger, line, line)
+  \$
+\$
+
+given debug(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
+  ret write(logger, 10, "debug", message, context)
+\$
+
+given info(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
+  ret write(logger, 20, "info", message, context)
+\$
+
+given warning(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
+  ret write(logger, 30, "warning", message, context)
+\$
+
+given error(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
+  ret write(logger, 40, "error", message, context)
+\$
+
+share Logger
+share logger
+share render
+share debug
+share info
+share warning
+share error

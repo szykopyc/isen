@@ -1,0 +1,91 @@
+// A trainable softmax bigram language model written entirely in Isen.
+// Rust supplies only float arrays, random floats, and scalar math.
+borrow Array
+borrow Maths
+borrow Random
+borrow String
+
+given token_id(word @@ string) @@ int $
+  if word == "the" $ ret 0 \$
+  if word == "sun" $ ret 1 \$
+  if word == "moon" $ ret 2 \$
+  if word == "rises" $ ret 3 \$
+  if word == "over" $ ret 4 \$
+  if word == "river" $ ret 5 \$
+  ret 6  // city
+\$
+
+given token_word(id @@ int) @@ string $
+  if id == 0 $ ret "the" \$
+  if id == 1 $ ret "sun" \$
+  if id == 2 $ ret "moon" \$
+  if id == 3 $ ret "rises" \$
+  if id == 4 $ ret "over" \$
+  if id == 5 $ ret "river" \$
+  ret "city"
+\$
+
+given sample_next(weights @@ arr[float], source @@ int, vocabulary @@ int) @@ int $
+  dec offset @@ int = source * vocabulary
+  dec total @@ float = 0.0
+  dec id @@ int = 0
+  aslongas id < vocabulary $
+    total = total + Maths.exp(weights[offset + id])
+    id = id + 1
+  \$
+  dec draw @@ float = Random.float(0.0, 1.0)
+  dec cumulative @@ float = 0.0
+  id = 0
+  aslongas id < vocabulary $
+    cumulative = cumulative + Maths.exp(weights[offset + id]) / total
+    if draw <= cumulative $ ret id \$
+    id = id + 1
+  \$
+  ret vocabulary - 1
+\$
+
+dec vocabulary @@ int = 7
+dec weights @@ arr[float] = Array.float(vocabulary * vocabulary, 0.0)
+dec corpus @@ list[string] = String.tokens(
+  "the sun rises over the river the moon rises over the city " +
+  "the sun rises over the city the moon rises over the river " +
+  "the river rises over the city the city rises over the moon"
+)
+dec rate @@ float = 0.12
+dec epoch @@ int = 0
+
+// Stochastic gradient descent for a one-hot-input, softmax-output bigram LM.
+aslongas epoch < 180 $
+  dec position @@ int = 0
+  aslongas position < size(corpus) - 1 $
+    dec source @@ int = token_id(corpus[position])
+    dec target @@ int = token_id(corpus[position + 1])
+    dec offset @@ int = source * vocabulary
+    dec normalizer @@ float = 0.0
+    dec id @@ int = 0
+    aslongas id < vocabulary $
+      normalizer = normalizer + Maths.exp(weights[offset + id])
+      id = id + 1
+    \$
+    id = 0
+    aslongas id < vocabulary $
+      dec probability @@ float = Maths.exp(weights[offset + id]) / normalizer
+      dec truth @@ float = 0.0
+      if id == target $ truth = 1.0 \$
+      weights[offset + id] = weights[offset + id] - rate * (probability - truth)
+      id = id + 1
+    \$
+    position = position + 1
+  \$
+  epoch = epoch + 1
+\$
+
+dec current @@ int = token_id("the")
+dec generated @@ string = "the"
+dec step @@ int = 1
+aslongas step < 40 $
+  current = sample_next(weights, current, vocabulary)
+  generated = generated + " " + token_word(current)
+  step = step + 1
+\$
+say(generated + ".")

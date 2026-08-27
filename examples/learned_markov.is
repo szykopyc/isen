@@ -1,0 +1,152 @@
+// A complete first-order Markov generator written in Isen.
+// String.tokens and size are general-purpose primitives; every transition count
+// and every sampled next word below is Isen code.
+borrow Random
+borrow String
+
+given is_stop(token @@ string) @@ bool $
+  ret token == "." || token == "!" || token == "?"
+\$
+
+given is_start(tokens @@ list[string], index @@ int) @@ bool $
+  if is_stop(tokens[index]) $ ret false \$
+  if index >= size(tokens) - 1 $ ret false \$
+  if is_stop(tokens[index + 1]) $ ret false \$
+  if index == 0 $ ret true \$
+  ret is_stop(tokens[index - 1])
+\$
+
+given start_count(tokens @@ list[string]) @@ int $
+  dec index @@ int = 0
+  dec count @@ int = 0
+  aslongas index < size(tokens) $
+    if is_start(tokens, index) $ count = count + 1 \$
+    index = index + 1
+  \$
+  ret count
+\$
+
+given start_index(tokens @@ list[string]) @@ int $
+  dec pick @@ int = Random.int(1, start_count(tokens))
+  dec index @@ int = 0
+  dec seen @@ int = 0
+  aslongas index < size(tokens) $
+    if is_start(tokens, index) $
+      seen = seen + 1
+      if seen == pick $ ret index \$
+    \$
+    index = index + 1
+  \$
+  ret 0
+\$
+
+given follower_count(tokens @@ list[string], left @@ string, right @@ string) @@ int $
+  dec index @@ int = 0
+  dec count @@ int = 0
+  aslongas index < size(tokens) - 2 $
+    if tokens[index] == left && tokens[index + 1] == right $ count = count + 1 \$
+    index = index + 1
+  \$
+  ret count
+\$
+
+given next_word(tokens @@ list[string], left @@ string, right @@ string) @@ string $
+  dec total @@ int = follower_count(tokens, left, right)
+  if total == 0 $ ret "." \$
+  dec pick @@ int = Random.int(1, total)
+  dec index @@ int = 0
+  dec seen @@ int = 0
+  aslongas index < size(tokens) - 2 $
+    if tokens[index] == left && tokens[index + 1] == right $
+      seen = seen + 1
+      if seen == pick $ ret tokens[index + 2] \$
+    \$
+    index = index + 1
+  \$
+  ret "."
+\$
+
+given loose_count(tokens @@ list[string], word @@ string) @@ int $
+  dec index @@ int = 0
+  dec count @@ int = 0
+  aslongas index < size(tokens) - 1 $
+    if tokens[index] == word $ count = count + 1 \$
+    index = index + 1
+  \$
+  ret count
+\$
+
+given loose_next(tokens @@ list[string], word @@ string) @@ string $
+  dec total @@ int = loose_count(tokens, word)
+  if total == 0 $ ret "." \$
+  dec pick @@ int = Random.int(1, total)
+  dec index @@ int = 0
+  dec seen @@ int = 0
+  aslongas index < size(tokens) - 1 $
+    if tokens[index] == word $
+      seen = seen + 1
+      if seen == pick $ ret tokens[index + 1] \$
+    \$
+    index = index + 1
+  \$
+  ret "."
+\$
+
+given paragraph(tokens @@ list[string], word_count @@ int) @@ string $
+  dec start @@ int = start_index(tokens)
+  dec left @@ string = tokens[start]
+  dec right @@ string = tokens[start + 1]
+  dec result @@ string = left + " " + right
+  dec emitted @@ int = 2
+  aslongas emitted < word_count $
+    dec following @@ string = next_word(tokens, left, right)
+    // Twenty percent of the time, loosen context from two words to one.
+    if Random.int(0, 99) < 20 $ following = loose_next(tokens, right) \$
+    if is_stop(following) $
+      result = result + "."
+      start = start_index(tokens)
+      left = tokens[start]
+      right = tokens[start + 1]
+      result = result + " " + left + " " + right
+      emitted = emitted + 1
+    \$ else $
+      result = result + " " + following
+      left = right
+      right = following
+    \$
+    emitted = emitted + 1
+  \$
+  ret result + "."
+\$
+
+dec corpus @@ string =
+"Every morning the harbor woke before the city. " +
+"The ferries carried bakers painters and sleepy students across the water. " +
+"At noon the market opened its blue doors and the square filled with voices. " +
+"A baker traded warm bread for oranges and listened to the gulls. " +
+"In the evening the ferries carried quiet windows back across the water. " +
+"The city watched the harbor grow silver under the moon. " +
+"Every morning the market opened before the gulls found the bread. " +
+"The students carried bright notebooks through the square. " +
+"At evening the baker watched the blue doors close." +
+"Szymon enjoyed a Pablo under the Spanish sun." +
+"The tall blonde fellow liked some good old Estrella. " +
+"The harbor waited beside the city while the ferries crossed the water. " +
+"The harbor watched the market open beside the blue doors. " +
+"The city waited beside the harbor until the market opened. " +
+"The city watched the ferries carry students across the water. " +
+"The market waited beside the harbor after the doors closed. " +
+"The market watched the city wake before the morning ferries. " +
+"The ferries carried bakers across the water before the market opened. " +
+"The ferries carried painters across the water after the market closed. " +
+"Students carried quiet notebooks through the market before noon. " +
+"Bakers carried warm bread through the market after dawn. " +
+"Painters carried blue boxes through the square before evening. " +
+"Every evening the harbor watched the city grow silver. " +
+"Every evening the market opened its blue doors for the bakers. " +
+"Every morning the city watched the harbor wake."
+
+dec tokens @@ list[string] = String.tokens(corpus)
+dec first @@ string = paragraph(tokens, 50)
+dec second @@ string = paragraph(tokens, 50)
+say(first + "\n\n" + second)

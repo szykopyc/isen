@@ -1,0 +1,299 @@
+// Tiny gated recurrent language model, trained entirely in Isen.
+// Rust supplies only fused numerical kernels; sequence control and learning policy live here.
+borrow Array
+borrow ML
+borrow Args
+borrow File
+borrow Input
+borrow List
+borrow Map
+borrow Maths
+borrow Random
+borrow String
+
+given is_stop(word @@ string) @@ bool $
+  ret word == "." || word == "!" || word == "?"
+\$
+
+given is_paragraph(word @@ string) @@ bool $
+  ret word == "<paragraph>"
+\$
+
+given word_id(ids @@ map[string, int], word @@ string) @@ int $
+  if Map.has(ids, word) $ ret ids[word] \$
+  ret 0  // unk
+\$
+
+given random_array(length @@ int, spread @@ float) @@ arr[float] $
+  dec values @@ arr[float] = Array.float(length, 0.0)
+  dec index @@ int = 0
+  aslongas index < length $
+    values[index] = Random.float(-spread, spread)
+    index = index + 1
+  \$
+  ret values
+\$
+
+given sigmoid(value @@ float) @@ float $
+  ret 1.0 / (1.0 + Maths.exp(-value))
+\$
+
+given append_word(string @@ string, word @@ string) @@ string $
+  if is_paragraph(word) $ ret string + "\n\n" \$
+  if is_stop(word) $ ret string + word \$
+  if string == "" $ ret word \$
+  ret string + " " + word
+\$
+
+// Every .txt file directly inside the supplied directory is loaded in sorted
+// filename order. Training corpora stay outside the repository.
+dec training_path_argument @@ perchance[string] = Args.get(0)
+if training_path_argument == naught $
+  say("usage: ./isen examples/gru_lm.is -- <corpus-directory>")
+  exit
+\$
+dec training_path @@ string = training_path_argument.pour_into(string)
+dec checkpoint_path @@ string = ".isen/gru_checkpoint"
+dec training_files @@ list[string] = File.text_files(training_path)
+if size(training_files) == 0 $
+  say("no .txt training files found in", training_path)
+  exit
+\$
+dec corpus @@ string = ""
+each training_file in training_files $
+  corpus = corpus + "\n\n" + File.read(training_file)
+\$
+corpus = String.lower(corpus)
+say("loaded", size(training_files), "training files from", training_path)
+dec tokens @@ list[string] = String.paragraph_tokens(corpus)
+dec token_count @@ int = size(tokens)
+dec counts @@ map[string, int] = Map.string_int()
+dec scan @@ int = 0
+aslongas scan < token_count $
+  dec token @@ string = tokens[scan]
+  if !Map.has(counts, token) $
+    counts[token] = 0
+  \$
+  counts[token] = counts[token] + 1
+  scan = scan + 1
+\$
+
+// A larger vocabulary is affordable because training no longer scores every
+// output word for every token. The long tail becomes the training-only unk id.
+dec ids @@ map[string, int] = Map.string_int()
+ids["unk"] = 0
+dec vocabulary_words @@ list[string] = ["unk"]
+dec vocabulary_limit @@ int = 4096
+dec frequent_words @@ list[string] = Map.top_string_int(counts, vocabulary_limit - 1)
+each vocabulary_token in frequent_words $
+  if vocabulary_token != "unk" $
+    ids[vocabulary_token] = size(vocabulary_words)
+    vocabulary_words = List.push(vocabulary_words, vocabulary_token)
+  \$
+\$
+say("vocabulary", size(vocabulary_words), "of", vocabulary_limit, "frequent words")
+
+dec vocabulary @@ int = size(vocabulary_words)
+dec token_ids @@ arr[int] = Array.int(token_count, 0)
+scan = 0
+aslongas scan < token_count $
+  token_ids[scan] = word_id(ids, tokens[scan])
+  scan = scan + 1
+\$
+
+// The GRU keeps context across sentences. Paragraph boundaries are explicit tokens
+// and are the only places where its recurrent state is cleared.
+dec width @@ int = 64
+dec window @@ int = 24
+dec embedding @@ arr[float] = random_array(vocabulary * width, 0.08)
+dec update_input @@ arr[float] = random_array(width * width, 0.08)
+dec update_state @@ arr[float] = random_array(width * width, 0.08)
+// With h = (1 - z) * old + z * proposed, a negative z bias initially
+// encourages memory instead of replacing half the state at every word.
+dec update_bias @@ arr[float] = Array.float(width, -1.0)
+dec reset_input @@ arr[float] = random_array(width * width, 0.08)
+dec reset_state @@ arr[float] = random_array(width * width, 0.08)
+dec reset_bias @@ arr[float] = Array.float(width, 0.0)
+dec candidate_input @@ arr[float] = random_array(width * width, 0.08)
+dec candidate_state @@ arr[float] = random_array(width * width, 0.08)
+dec candidate_bias @@ arr[float] = Array.float(width, 0.0)
+
+dec state @@ arr[float] = Array.float(width, 0.0)
+dec previous @@ arr[float] = Array.float(width, 0.0)
+dec update_gate @@ arr[float] = Array.float(width, 0.0)
+dec reset_gate @@ arr[float] = Array.float(width, 0.0)
+dec proposed @@ arr[float] = Array.float(width, 0.0)
+dec state_gradient @@ arr[float] = Array.float(width, 0.0)
+dec recurrent_gradient @@ arr[float] = Array.float(width, 0.0)
+dec end_state @@ arr[float] = Array.float(width, 0.0)
+dec cache_previous @@ arr[float] = Array.float(window * width, 0.0)
+dec cache_update @@ arr[float] = Array.float(window * width, 0.0)
+dec cache_reset @@ arr[float] = Array.float(window * width, 0.0)
+dec cache_proposed @@ arr[float] = Array.float(window * width, 0.0)
+dec cache_gradient @@ arr[float] = Array.float(window * width, 0.0)
+dec output @@ arr[float] = random_array(vocabulary * width, 0.08)
+dec output_bias @@ arr[float] = Array.float(vocabulary, 0.0)
+dec samples @@ arr[int] = Array.int(10, 0)
+dec rate @@ float = 0.025
+dec epoch @@ int = 0
+
+// Save static metadata once, then atomically replace learned arrays after
+// every completed epoch. An interrupted run keeps its previous checkpoint.
+File.make_dir(checkpoint_path)
+File.write(checkpoint_path + "/metadata.txt",
+  width.pour_into(string) + "\n" + vocabulary.pour_into(string))
+dec vocabulary_text @@ string = ""
+dec vocabulary_index @@ int = 0
+aslongas vocabulary_index < vocabulary $
+  if vocabulary_index > 0 $ vocabulary_text = vocabulary_text + "\n" \$
+  vocabulary_text = vocabulary_text + vocabulary_words[vocabulary_index]
+  vocabulary_index = vocabulary_index + 1
+\$
+File.write(checkpoint_path + "/vocabulary.txt", vocabulary_text)
+
+given save_checkpoint() @@ bool $
+  Array.save(checkpoint_path + "/embedding.bin", embedding)
+  Array.save(checkpoint_path + "/update_input.bin", update_input)
+  Array.save(checkpoint_path + "/update_state.bin", update_state)
+  Array.save(checkpoint_path + "/update_bias.bin", update_bias)
+  Array.save(checkpoint_path + "/reset_input.bin", reset_input)
+  Array.save(checkpoint_path + "/reset_state.bin", reset_state)
+  Array.save(checkpoint_path + "/reset_bias.bin", reset_bias)
+  Array.save(checkpoint_path + "/candidate_input.bin", candidate_input)
+  Array.save(checkpoint_path + "/candidate_state.bin", candidate_state)
+  Array.save(checkpoint_path + "/candidate_bias.bin", candidate_bias)
+  Array.save(checkpoint_path + "/output.bin", output)
+  Array.save(checkpoint_path + "/output_bias.bin", output_bias)
+  ret true
+\$
+
+aslongas epoch < 10 $
+  Array.fill(state, 0, width, 0.0)
+  dec position @@ int = 0
+  dec loss @@ float = 0.0
+  dec learned @@ int = 0
+  aslongas position < token_count - 1 $
+    dec steps @@ int = window
+    if position + steps > token_count - 1 $
+      steps = token_count - 1 - position
+    \$
+
+    // Cache every forward activation in this window. All scheduling and
+    // sequence bookkeeping remains ordinary Isen.
+    dec forward @@ int = 0
+    aslongas forward < steps $
+      dec current @@ int = position + forward
+      dec input @@ int = token_ids[current]
+      dec target @@ int = token_ids[current + 1]
+      if is_paragraph(tokens[current]) $ Array.fill(state, 0, width, 0.0) \$
+
+      ML.gru_forward(state, previous, update_gate, reset_gate, proposed,
+        embedding, input,
+        update_input, update_state, update_bias,
+        reset_input, reset_state, reset_bias,
+        candidate_input, candidate_state, candidate_bias, width)
+      dec offset @@ int = forward * width
+      Array.copy(cache_previous, offset, previous, 0, width)
+      Array.copy(cache_update, offset, update_gate, 0, width)
+      Array.copy(cache_reset, offset, reset_gate, 0, width)
+      Array.copy(cache_proposed, offset, proposed, 0, width)
+      Array.fill(state_gradient, 0, width, 0.0)
+
+      if target != 0 $
+        // The true next word occupies slot zero. Fill the other slots with
+        // unique random alternatives for a normalized sampled-softmax update.
+        samples[0] = target
+        dec round @@ int = 1
+        aslongas round < 10 $
+          dec sampled @@ int = Random.int(0, vocabulary - 1)
+          dec duplicate @@ bool = false
+          dec checked @@ int = 0
+          aslongas checked < round $
+            if samples[checked] == sampled $ duplicate = true \$
+            checked = checked + 1
+          \$
+          if !duplicate $
+            samples[round] = sampled
+            round = round + 1
+          \$
+        \$
+        loss = loss + ML.sampled_softmax_update(output, output_bias, state,
+          state_gradient, samples, 10, rate, width)
+        learned = learned + 1
+      \$
+      Array.copy(cache_gradient, offset, state_gradient, 0, width)
+      forward = forward + 1
+    \$
+
+    // Truncated backpropagation through time. The recurrent
+    // gradient is handed from each token to the preceding cached token.
+    Array.copy(end_state, 0, state, 0, width)
+    Array.fill(recurrent_gradient, 0, width, 0.0)
+    dec backward @@ int = steps - 1
+    aslongas backward >= 0 $
+      dec current @@ int = position + backward
+      dec offset @@ int = backward * width
+      Array.copy(previous, 0, cache_previous, offset, width)
+      Array.copy(update_gate, 0, cache_update, offset, width)
+      Array.copy(reset_gate, 0, cache_reset, offset, width)
+      Array.copy(proposed, 0, cache_proposed, offset, width)
+      Array.copy(state_gradient, 0, cache_gradient, offset, width)
+      ML.gru_backprop(embedding, token_ids[current], previous,
+        update_gate, reset_gate, proposed, state_gradient, recurrent_gradient,
+        update_input, update_state, update_bias,
+        reset_input, reset_state, reset_bias,
+        candidate_input, candidate_state, candidate_bias,
+        width, rate)
+      if is_paragraph(tokens[current]) $
+        Array.fill(recurrent_gradient, 0, width, 0.0)
+      \$
+      backward = backward - 1
+    \$
+    Array.copy(state, 0, end_state, 0, width)
+    position = position + steps
+  \$
+  say("epoch", epoch + 1, "sampled softmax loss", loss / learned.pour_into(float))
+  rate = rate * 0.85
+  epoch = epoch + 1
+  save_checkpoint()
+  say("checkpointed epoch", epoch, "to", checkpoint_path)
+\$
+
+given complete(prompt @@ string) @@ string $
+  Array.fill(state, 0, width, 0.0)
+  dec prompt_tokens @@ list[string] = String.tokens(String.lower(prompt))
+  dec prompt_index @@ int = 0
+  dec last @@ int = 0
+  aslongas prompt_index < size(prompt_tokens) $
+    last = word_id(ids, prompt_tokens[prompt_index])
+    ML.gru_forward(state, previous, update_gate, reset_gate, proposed,
+      embedding, last,
+      update_input, update_state, update_bias,
+      reset_input, reset_state, reset_bias,
+      candidate_input, candidate_state, candidate_bias, width)
+    prompt_index = prompt_index + 1
+  \$
+
+  dec generated @@ string = ""
+  dec step @@ int = 0
+  aslongas step < 80 $
+    dec next @@ int = ML.softmax_sample(output, output_bias, state,
+      vocabulary, width, 0.70, last, 1.6)
+    dec word @@ string = vocabulary_words[next]
+    generated = append_word(generated, word)
+    last = next
+    if is_paragraph(word) $ Array.fill(state, 0, width, 0.0) \$
+    ML.gru_forward(state, previous, update_gate, reset_gate, proposed,
+      embedding, next,
+      update_input, update_state, update_bias,
+      reset_input, reset_state, reset_bias,
+      candidate_input, candidate_state, candidate_bias, width)
+    step = step + 1
+  \$
+  ret generated
+\$
+
+say("ask for a continuation; type /quit to leave")
+aslongas (dec prompt @@ string = Input.line("\nyou @@ ")) != "/quit" $
+  say("model @@", complete(prompt))
+\$

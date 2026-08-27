@@ -1,0 +1,129 @@
+// Isen feature showcase: a tiny typed weather station.
+// Run it with: ./isen examples/showcase.is
+
+borrow LengText
+borrow Random
+borrow Time
+
+form Reading $
+  at @@ int,
+  sensor @@ string,
+  temperature @@ float,
+  healthy @@ bool,
+\$
+
+form Station $
+  name @@ string,
+  operator @@ perchance[string],
+\$
+
+space Weather $
+  given state(reading @@ Reading) @@ string $
+    if !reading.healthy $ ret "fault" \$
+    if reading.temperature < 19.0 $ ret "cold" \$
+    if reading.temperature > 27.0 $ ret "hot" \$
+    ret "normal"
+  \$
+
+  given coloured_state(reading @@ Reading) @@ string $
+    dec state @@ string = Weather.state(reading)
+    if state == "fault" $ ret LengText.red(state) \$
+    if state == "cold" $ ret LengText.blue(state) \$
+    if state == "hot" $ ret LengText.yellow(state) \$
+    ret LengText.green(state)
+  \$
+
+  given operator_name(value @@ perchance[string]) @@ string $
+    if value == naught $ ret "unassigned" \$
+    ret value.pour_into(string)
+  \$
+\$
+
+dec station @@ Station = Station $
+  name: "North Roof",
+  operator: naught
+\$
+
+// Arrays are contiguous and mutable. Lists can nest freely.
+dec calibration @@ arr[float] = @[0.25, -0.5, 1.0]
+calibration[1] = calibration[1] + 0.1
+dec shifts @@ list[list[string]] = [["dawn", "noon"], ["dusk", "night"]]
+
+dec started @@ int = Time.clock()
+
+dec readings @@ list[Reading] = [
+  Reading $
+    at: 1000,
+    sensor: "roof",
+    temperature: Random.int(180, 320).pour_into(float) / 10.0,
+    healthy: true
+  \$,
+  Reading $
+    at: 2000,
+    sensor: "garden",
+    temperature: Random.int(180, 320).pour_into(float) / 10.0,
+    healthy: true
+  \$,
+  Reading $
+    at: 3000,
+    sensor: "cellar",
+    temperature: 17.5,
+    healthy: false
+  \$
+]
+dec counts @@ map[string, int] = #{
+  "normal": 0,
+  "cold": 0,
+  "hot": 0,
+  "fault": 0
+}
+
+say(LengText.blue("Isen Weather Station"))
+say("station", station.name)
+say("operator", Weather.operator_name(station.operator))
+say("current shift", shifts[0][0])
+say("calibration", calibration)
+say("")
+
+each reading in readings $
+  dec state @@ string = Weather.state(reading)
+  counts[state] = counts[state] + 1
+  say(
+    reading.at,
+    reading.sensor,
+    reading.temperature,
+    Weather.coloured_state(reading))
+\$
+
+say("healthy sensors")
+each reading in readings $
+  if !reading.healthy $ onwards \$
+  say("-", reading.sensor)
+\$
+
+// Find the first failed sensor. 'enough' leaves only this nearest loop.
+dec first_fault @@ perchance[string] = naught
+each reading in readings $
+  if !reading.healthy $
+    first_fault = reading.sensor
+    enough
+  \$
+\$
+
+if first_fault == naught $
+  say(LengText.green("all sensors healthy"))
+\$ else $
+  shout("first failed sensor", first_fault.pour_into(string))
+\$
+
+// Declaration expressions work inside conditions and retain their binding.
+dec pulse @@ int = 0
+aslongas (dec next_pulse @@ int = pulse + 1) <= 3 $
+  pulse = next_pulse
+  say("heartbeat", pulse)
+  Time.sleep(10)
+\$
+
+say("")
+say("summary", counts)
+say("completed in", Time.since(started), "ms")

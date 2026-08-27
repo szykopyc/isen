@@ -1,0 +1,66 @@
+// Explicit opt-in coloured human logs. LengText is imported only here.
+
+borrow LengText
+borrow String
+borrow Logger from "core.is"
+borrow LogEvent from "core.is"
+borrow make_logger from "core.is"
+borrow make_event from "core.is"
+borrow enabled from "core.is"
+borrow emit from "core.is"
+
+given logger(minimum @@ string, stdout @@ bool, file @@ perchance[string]) @@ Logger $
+  ret make_logger(minimum, stdout, file)
+\$
+
+given suffix(event @@ LogEvent) @@ string $
+  if size(event.context) > 0 $
+    ret " " + String.show(event.context)
+  \$
+  ret ""
+\$
+
+given plain(event @@ LogEvent) @@ string $
+  ret event.timestamp + " " + event.label + " " + event.message + suffix(event)
+\$
+
+given coloured(event @@ LogEvent) @@ string $
+  dec label @@ string = event.label
+  if event.level == 10 $ label = LengText.grey(label) \$
+  if event.level == 20 $ label = LengText.green(label) \$
+  if event.level == 30 $ label = LengText.yellow(label) \$
+  if event.level == 40 $ label = LengText.red(label) \$
+  ret event.timestamp + " " + label + " " + event.message + suffix(event)
+\$
+
+given write(logger @@ Logger, level @@ int, label @@ string, message @@ string, context @@ map[string, string]) @@ unit $
+  dec event @@ LogEvent = make_event(level, label, message, context)
+  if enabled(logger, event) $
+    emit(logger, coloured(event), plain(event))
+  \$
+\$
+
+given debug(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
+  ret write(logger, 10, "DEBUG", message, context)
+\$
+
+given info(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
+  ret write(logger, 20, "INFO", message, context)
+\$
+
+given warning(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
+  ret write(logger, 30, "WARNING", message, context)
+\$
+
+given error(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
+  ret write(logger, 40, "ERROR", message, context)
+\$
+
+share Logger
+share logger
+share plain
+share coloured
+share debug
+share info
+share warning
+share error

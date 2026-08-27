@@ -1,0 +1,60 @@
+// lib/screen.is
+//
+// A one-frame-at-a-time terminal, for animation that does not flicker.
+//
+// The flicker in a naive redraw comes from clearing the screen and then
+// repainting it line by line: the terminal shows every half-finished state.
+// This composes the entire frame into a single string, then writes it in one
+// go over the top of the previous frame with no clear in between.
+//
+// LengText owns the ANSI control bytes and the atomic stdout write. Keeping
+// that primitive native means programmes never have to synthesize ESC bytes
+// from a colour sequence.
+
+borrow String
+borrow LengText
+
+form Screen $
+  home @@ string,
+  wipe @@ string,
+  tail @@ string,
+  hide @@ string,
+  reveal @@ string,
+  capable @@ bool,
+\$
+share Screen
+
+given open_screen() @@ Screen $
+  ret Screen $
+    home: "",
+    wipe: "",
+    tail: "",
+    hide: "",
+    reveal: "",
+    capable: true,
+  \$
+\$
+share open_screen
+
+// Build the complete back buffer before touching stdout.
+given compose(screen @@ Screen, lines @@ list[string]) @@ string $
+  ret String.join(lines, "\n")
+\$
+share compose
+
+// Blit. One write: home, the whole frame, erase whatever sat below it.
+given present(screen @@ Screen, buffer @@ string) @@ unit $
+  LengText.blit(buffer)
+\$
+share present
+
+given begin(screen @@ Screen) @@ unit $
+  LengText.screen_begin()
+\$
+share begin
+
+// Always call this, including on failure, or the cursor stays invisible.
+given finish(screen @@ Screen) @@ unit $
+  LengText.screen_end()
+\$
+share finish

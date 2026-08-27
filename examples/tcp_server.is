@@ -1,0 +1,12 @@
+// A blocking TCP echo server. It handles one connection, then exits.
+borrow Tcp
+
+dec listener @@ tcp_listener = Tcp.listen("127.0.0.1", 9000)
+say("TCP echo server listening on 127.0.0.1:9000")
+
+dec client @@ tcp_stream = Tcp.accept(listener)
+dec request @@ arr[int] = Tcp.read(client, 65535)
+Tcp.write_all_bytes(client, request)
+Tcp.shutdown(client, "both")
+
+say("echoed", size(request), "bytes to", Tcp.peer_host(client))

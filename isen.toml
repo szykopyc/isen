@@ -1,0 +1,23 @@
+[format]
+indent_width = 2
+max_blank_lines = 1
+final_newline = true
+
+[test]
+default_profile = "all"
+
+[test.profiles.all]
+paths = ["tests"]
+fail_fast = false
+
+[test.profiles.stdlib]
+paths = ["tests/stdlib.test.is"]
+fail_fast = true
+
+[test.profiles.logging]
+paths = ["tests/logging_colours.test.is", "tests/logging_human.test.is", "tests/logging_json.test.is"]
+fail_fast = true
+
+# Aliases are resolved relative to this file. For example:
+# [stash_links]
+# shared = "../shared-stashes"

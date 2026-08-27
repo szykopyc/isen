@@ -1,0 +1,13 @@
+borrow String
+borrow Test
+borrow make_event from "../stdlib/logging/core.is"
+borrow plain from "../stdlib/logging/colours.is"
+borrow coloured from "../stdlib/logging/colours.is"
+
+dec event = make_event(40, "ERROR", "failed", #{"code": "7"})
+dec terminal @@ string = coloured(event)
+dec persistent @@ string = plain(event)
+
+Test.assert(String.find(terminal, "[31m") != naught, "coloured renderer emits ANSI")
+Test.assert(String.find(persistent, "[31m") == naught, "plain file renderer stays ANSI-free")
+Test.assert(String.find(persistent, "ERROR failed") != naught, "plain renderer content")

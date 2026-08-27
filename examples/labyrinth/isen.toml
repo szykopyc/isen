@@ -1,0 +1,18 @@
+[format]
+indent_width = 2
+max_blank_lines = 1
+final_newline = true
+
+[test]
+default_profile = "all"
+
+[test.profiles.all]
+paths = ["labyrinth.test.is"]
+fail_fast = false
+
+[test.profiles.fast]
+paths = ["labyrinth.test.is"]
+fail_fast = true
+
+[stash_links]
+stdlib = "../../stdlib"

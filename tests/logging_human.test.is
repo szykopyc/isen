@@ -1,0 +1,19 @@
+borrow File
+borrow String
+borrow Test
+borrow logger from "../stdlib/logging/human.is"
+borrow debug from "../stdlib/logging/human.is"
+borrow warning from "../stdlib/logging/human.is"
+
+File.make_dir(".isen")
+dec path @@ string = ".isen/logging-human-test.log"
+File.write(path, "")
+
+dec log = logger("warning", false, path)
+debug(log, "filtered", #{})
+warning(log, "disk filling", #{"free": "12%"})
+dec line @@ string = File.read(path)
+
+Test.assert(String.find(line, "WARNING disk filling") != naught, "human level and message")
+Test.assert(String.find(line, "free") != naught, "human context")
+Test.assert(String.find(line, "filtered") == naught, "minimum level filtering")

@@ -1,0 +1,45 @@
+borrow List
+
+dec overflowed @@ bool = false
+attempt $
+  dec impossible @@ int = 9223372036854775807 + 1
+\$ recover failure @@ Problem $
+  overflowed = true
+\$
+if !overflowed $ raise("integer overflow did not raise Problem") \$
+
+given dangerous() @@ bool $ raise("short-circuit operand ran") \$
+if false && dangerous() $ raise("false && changed value") \$
+if !(true || dangerous()) $ raise("true || changed value") \$
+
+dec trace @@ string = ""
+given mark(label @@ string, value @@ int) @@ int $
+  trace += label
+  ret value
+\$
+given add_three(left @@ int, middle @@ int, right @@ int) @@ int $
+  ret left + middle + right
+\$
+if add_three(mark("a", 1), mark("b", 2), mark("c", 3)) != 6 $
+  raise("argument values changed")
+\$
+if trace != "abc" $ raise("arguments were not evaluated left-to-right") \$
+
+form Person $ name @@ string, scores @@ list[int] \$
+dec first @@ Person = Person $ name: "Ada", scores: [1, 2] \$
+dec second @@ Person = Person $ scores: [1, 2], name: "Ada" \$
+if first != second $ raise("forms were not structurally equal") \$
+
+dec alias @@ Person = first
+alias.name = "Grace"
+if first.name != "Grace" $ raise("form assignment did not preserve identity") \$
+
+dec inner @@ list[int] = [1]
+dec outer @@ list[list[int]] = [inner]
+dec copied @@ list[list[int]] = List.push(outer, [2])
+copied[0][0] = 9
+List.append(copied, [3])
+if inner[0] != 9 $ raise("List.push did not make a shallow copy") \$
+if size(outer) != 1 || size(copied) != 3 $
+  raise("List.push shared the outer list")
+\$

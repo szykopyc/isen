@@ -1,0 +1,241 @@
+// Neural four-gram language model, trained entirely in Isen.
+// It reads three ordered previous words and learns with negative sampling.
+borrow Array
+borrow Args
+borrow File
+borrow List
+borrow Map
+borrow Maths
+borrow Random
+borrow String
+
+given is_stop(word @@ string) @@ bool $
+  ret word == "." || word == "!" || word == "?"
+\$
+
+given word_id(ids @@ map[string, int], word @@ string) @@ int $
+  if Map.has(ids, word) $ ret ids[word] \$
+  ret 0  // unk
+\$
+
+given random_array(length @@ int, spread @@ float) @@ arr[float] $
+  dec values @@ arr[float] = Array.float(length, 0.0)
+  dec index @@ int = 0
+  aslongas index < length $
+    values[index] = Random.float(-spread, spread)
+    index = index + 1
+  \$
+  ret values
+\$
+
+given sigmoid(value @@ float) @@ float $
+  ret 1.0 / (1.0 + Maths.exp(-value))
+\$
+
+given append_word(string @@ string, word @@ string) @@ string $
+  if is_stop(word) $ ret string + word \$
+  if string == "" $ ret word \$
+  ret string + " " + word
+\$
+
+given sample_next(left_embed @@ arr[float], middle_embed @@ arr[float], right_embed @@ arr[float],
+  hidden_bias @@ arr[float], output @@ arr[float], output_bias @@ arr[float],
+  left @@ int, middle @@ int, right @@ int, vocabulary @@ int,
+  width @@ int, temperature @@ float) @@ int $
+  dec hidden @@ arr[float] = Array.float(width, 0.0)
+  dec unit @@ int = 0
+  aslongas unit < width $
+    hidden[unit] = Maths.tanh(hidden_bias[unit] +
+      left_embed[left * width + unit] +
+      middle_embed[middle * width + unit] +
+      right_embed[right * width + unit])
+    unit = unit + 1
+  \$
+
+  // unk is useful while training, but never useful to show a human.
+  dec scores @@ arr[float] = Array.float(vocabulary, 0.0)
+  dec total @@ float = 0.0
+  dec candidate @@ int = 1
+  aslongas candidate < vocabulary $
+    dec score @@ float = output_bias[candidate]
+    unit = 0
+    aslongas unit < width $
+      score = score + output[candidate * width + unit] * hidden[unit]
+      unit = unit + 1
+    \$
+    scores[candidate] = Maths.exp(score / temperature)
+    total = total + scores[candidate]
+    candidate = candidate + 1
+  \$
+  dec draw @@ float = Random.float(0.0, 1.0)
+  dec cumulative @@ float = 0.0
+  candidate = 1
+  aslongas candidate < vocabulary $
+    cumulative = cumulative + scores[candidate] / total
+    if draw <= cumulative $ ret candidate \$
+    candidate = candidate + 1
+  \$
+  ret vocabulary - 1
+\$
+
+dec corpus_path @@ perchance[string] = Args.get(0)
+if corpus_path == naught $
+  say("usage: ./isen examples/word_lm.is -- <corpus.txt>")
+  exit
+\$
+dec corpus @@ string = String.lower(File.read(corpus_path.pour_into(string)))
+dec tokens @@ list[string] = String.tokens(corpus)
+dec counts @@ map[string, int] = Map.string_int()
+dec unique_words @@ list[string] = String.tokens("")
+dec scan @@ int = 0
+aslongas scan < size(tokens) $
+  dec token @@ string = tokens[scan]
+  if !Map.has(counts, token) $
+    counts[token] = 0
+    unique_words = List.push(unique_words, token)
+  \$
+  counts[token] = counts[token] + 1
+  scan = scan + 1
+\$
+
+// A larger vocabulary is affordable because training no longer scores every
+// output word for every token. The long tail becomes the training-only unk id.
+dec ids @@ map[string, int] = Map.string_int()
+ids["unk"] = 0
+dec vocabulary_words @@ list[string] = ["unk"]
+dec vocabulary_limit @@ int = 256
+dec vocabulary_token @@ string = ""
+dec maximum_count @@ int = 0
+scan = 0
+aslongas scan < size(unique_words) $
+  vocabulary_token = unique_words[scan]
+  if counts[vocabulary_token] > maximum_count $
+    maximum_count = counts[vocabulary_token]
+  \$
+  scan = scan + 1
+\$
+// Walk down the observed frequency levels once. This is much cheaper than
+// repeatedly searching for the next-best word when vocabulary_limit is large.
+dec frequency @@ int = maximum_count
+aslongas frequency > 0 && size(vocabulary_words) < vocabulary_limit $
+  scan = 0
+  aslongas scan < size(unique_words) $
+    vocabulary_token = unique_words[scan]
+    if counts[vocabulary_token] == frequency && vocabulary_token != "unk" && size(vocabulary_words) < vocabulary_limit $
+      ids[vocabulary_token] = size(vocabulary_words)
+      vocabulary_words = List.push(vocabulary_words, vocabulary_token)
+    \$
+    scan = scan + 1
+  \$
+  frequency = frequency - 1
+\$
+say("vocabulary", size(vocabulary_words), "of", vocabulary_limit, "frequent words")
+
+dec vocabulary @@ int = size(vocabulary_words)
+// Six passes over a novel-sized excerpt give plenty of updates. Keeping this
+// narrow is deliberate: the example should finish in an interpreter.
+dec width @@ int = 8
+dec left_embed @@ arr[float] = random_array(vocabulary * width, 0.08)
+dec middle_embed @@ arr[float] = random_array(vocabulary * width, 0.08)
+dec right_embed @@ arr[float] = random_array(vocabulary * width, 0.08)
+dec hidden_bias @@ arr[float] = Array.float(width, 0.0)
+dec output @@ arr[float] = random_array(vocabulary * width, 0.08)
+dec output_bias @@ arr[float] = Array.float(vocabulary, 0.0)
+dec hidden @@ arr[float] = Array.float(width, 0.0)
+dec hidden_gradient @@ arr[float] = Array.float(width, 0.0)
+dec rate @@ float = 0.06
+dec epoch @@ int = 0
+
+aslongas epoch < 6 $
+  dec position @@ int = 0
+  dec loss @@ float = 0.0
+  aslongas position < size(tokens) - 3 $
+    dec left @@ int = word_id(ids, tokens[position])
+    dec middle @@ int = word_id(ids, tokens[position + 1])
+    dec right @@ int = word_id(ids, tokens[position + 2])
+    dec target @@ int = word_id(ids, tokens[position + 3])
+
+    dec unit @@ int = 0
+    aslongas unit < width $
+      hidden[unit] = Maths.tanh(hidden_bias[unit] +
+        left_embed[left * width + unit] +
+        middle_embed[middle * width + unit] +
+        right_embed[right * width + unit])
+      hidden_gradient[unit] = 0.0
+      unit = unit + 1
+    \$
+
+    // One real continuation plus five random non-continuations.
+    dec round @@ int = 0
+    aslongas round < 6 $
+      dec candidate @@ int = target
+      dec label @@ float = 1.0
+      if round > 0 $
+        candidate = Random.int(0, vocabulary - 1)
+        if candidate == target $ candidate = (candidate + 1) % vocabulary \$
+        label = 0.0
+      \$
+      dec score @@ float = output_bias[candidate]
+      unit = 0
+      aslongas unit < width $
+        score = score + output[candidate * width + unit] * hidden[unit]
+        unit = unit + 1
+      \$
+      dec probability @@ float = sigmoid(score)
+      if label == 1.0 $ loss = loss - Maths.log(probability) \$
+      dec delta @@ float = probability - label
+      output_bias[candidate] = output_bias[candidate] - rate * delta
+      unit = 0
+      aslongas unit < width $
+        dec output_index @@ int = candidate * width + unit
+        hidden_gradient[unit] = hidden_gradient[unit] + delta * output[output_index]
+        output[output_index] = output[output_index] - rate * delta * hidden[unit]
+        unit = unit + 1
+      \$
+      round = round + 1
+    \$
+
+    unit = 0
+    aslongas unit < width $
+      dec gradient @@ float = hidden_gradient[unit] * (1.0 - hidden[unit] * hidden[unit])
+      hidden_bias[unit] = hidden_bias[unit] - rate * gradient
+      dec left_index @@ int = left * width + unit
+      dec middle_index @@ int = middle * width + unit
+      dec right_index @@ int = right * width + unit
+      left_embed[left_index] = left_embed[left_index] - rate * gradient
+      middle_embed[middle_index] = middle_embed[middle_index] - rate * gradient
+      right_embed[right_index] = right_embed[right_index] - rate * gradient
+      unit = unit + 1
+    \$
+    position = position + 1
+  \$
+  say("epoch", epoch + 1, "positive loss", loss / (size(tokens).pour_into(float) - 3.0))
+  epoch = epoch + 1
+\$
+
+dec seed @@ int = 0
+dec seed_ready @@ bool = false
+dec attempts @@ int = 0
+aslongas !seed_ready && attempts < 64 $
+  seed = Random.int(0, size(tokens) - 4)
+  if word_id(ids, tokens[seed]) != 0 && word_id(ids, tokens[seed + 1]) != 0 && word_id(ids, tokens[seed + 2]) != 0 $
+    seed_ready = true
+  \$
+  attempts = attempts + 1
+\$
+dec left @@ int = word_id(ids, tokens[seed])
+dec middle @@ int = word_id(ids, tokens[seed + 1])
+dec right @@ int = word_id(ids, tokens[seed + 2])
+dec generated @@ string = vocabulary_words[left] + " " + vocabulary_words[middle] + " " + vocabulary_words[right]
+dec step @@ int = 0
+aslongas step < 120 $
+  dec next @@ int = sample_next(left_embed, middle_embed, right_embed, hidden_bias,
+    output, output_bias, left, middle, right, vocabulary, width, 0.68)
+  dec word @@ string = vocabulary_words[next]
+  generated = append_word(generated, word)
+  left = middle
+  middle = right
+  right = next
+  step = step + 1
+\$
+say("\n" + generated)

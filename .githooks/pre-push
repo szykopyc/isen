@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+
+echo "pre-push: running the release gate"
+exec sh scripts/release-check.sh

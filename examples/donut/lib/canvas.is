@@ -1,0 +1,82 @@
+// lib/canvas.is
+//
+// A depth-buffered ASCII framebuffer.
+//
+// A Canvas groups dimensions with mutable shade and depth arrays. The tiny
+// poke_* helpers keep writes named and reusable inside the renderer.
+
+borrow Array
+
+form Canvas $
+  width @@ int,
+  height @@ int,
+  shade @@ arr[int],
+  depth @@ arr[float],
+\$
+
+given new_canvas(width @@ int, height @@ int) @@ Canvas $
+  dec cells @@ int = width * height
+  ret Canvas $ width: width, height: height, shade: Array.int(cells, 0), depth: Array.float(cells, 0.0) \$
+\$
+
+given poke_shade(cells @@ arr[int], index @@ int, value @@ int) @@ unit $
+  cells[index] = value
+\$
+
+given poke_depth(cells @@ arr[float], index @@ int, value @@ float) @@ unit $
+  cells[index] = value
+\$
+
+given wipe(canvas @@ Canvas) @@ unit $
+  dec cells @@ int = canvas.width * canvas.height
+  dec index @@ int = 0
+  aslongas index < cells $
+    poke_shade(canvas.shade, index, 0)
+    poke_depth(canvas.depth, index, 0.0)
+    index = index + 1
+  \$
+\$
+
+// `nearness` is 1/z, so bigger means closer to the viewer. Clipping happens
+// here rather than at the call site, which keeps the renderer arithmetic
+// uncluttered.
+given plot(canvas @@ Canvas, x @@ int, y @@ int, nearness @@ float, level @@ int) @@ unit $
+  if x < 0 $ ret unit \$
+  if y < 0 $ ret unit \$
+  if x >= canvas.width $ ret unit \$
+  if y >= canvas.height $ ret unit \$
+  dec index @@ int = y * canvas.width + x
+  if nearness > canvas.depth[index] $
+    poke_depth(canvas.depth, index, nearness)
+    poke_shade(canvas.shade, index, level)
+  \$
+\$
+
+// Flatten the shade buffer into one block of string. Level 0 is the palette's
+// blank, so an untouched canvas renders as empty space.
+given render(canvas @@ Canvas, palette @@ list[string]) @@ string $
+  dec highest @@ int = size(palette) - 1
+  dec picture @@ string = ""
+  dec y @@ int = 0
+  aslongas y < canvas.height $
+    dec line @@ string = ""
+    dec x @@ int = 0
+    aslongas x < canvas.width $
+      dec level @@ int = canvas.shade[y * canvas.width + x]
+      if level > highest $
+        level = highest
+      \$
+      line = line + palette[level]
+      x = x + 1
+    \$
+    picture = picture + line + "\n"
+    y = y + 1
+  \$
+  ret picture
+\$
+
+share Canvas
+share new_canvas
+share wipe
+share plot
+share render
