@@ -340,6 +340,9 @@ fn terminal_write(call: &NativeCall<'_>, operation: &str, bytes: &[u8]) -> Resul
 fn blit(call: NativeCall<'_>) -> Result<crate::Value> {
     call.exactly(1, "LengText.blit")?;
     let frame = call.string(0, "LengText.blit")?;
+    // Some terminals treat LF as vertical motion only. Normalize frame rows
+    // to CRLF so every line begins at column one, regardless of tty mode.
+    let frame = frame.replace("\r\n", "\n").replace('\n', "\r\n");
     let bytes = format!("\x1b[H{frame}\x1b[J");
     terminal_write(&call, "blit", bytes.as_bytes())
 }
