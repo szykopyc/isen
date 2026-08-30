@@ -30,7 +30,7 @@ cargo build --release --locked
 The launcher never downloads dependencies or builds implicitly. If the release
 binary is absent, it prints the exact build command and exits. To install the
 binary on your Cargo `PATH` instead, run `cargo install --path . --locked`.
-Version 0.1.1 is distributed from this Git repository,
+Version 0.1.2 is distributed from this Git repository,
 not crates.io.
 
 Contributors can install the repository's versioned pre-commit and pre-push
@@ -41,7 +41,7 @@ checks with `sh scripts/install-git-hooks.sh`; see
 ./isen examples/tour.is
 ```
 
-Pushing a version tag such as `v0.1.1` publishes a checked GitHub Release with
+Pushing a version tag such as `v0.1.2` publishes a checked GitHub Release with
 Linux and macOS artifacts plus `SHA256SUMS`. The release workflow rejects a tag
 that does not match the version in `Cargo.toml`. The Linux
 `isen-linux-x86_64` artifact is a statically linked musl executable; the macOS

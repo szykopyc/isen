@@ -533,7 +533,7 @@ borrow parse from "config.is" as parse_config
 
 Aliases are lexical and must not duplicate another name in the same scope.
 Shipped extension imports are not aliased. Nominal form and problem aliases are
-also deliberately excluded in v0.1.0 because renaming a nominal type would
+also deliberately excluded in v0.1.x because renaming a nominal type would
 otherwise obscure its identity; borrow those by their shared declaration name.
 
 Each canonical stash path is evaluated once per programme. Private names remain
