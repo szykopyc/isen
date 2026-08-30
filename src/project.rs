@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap,
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 
@@ -204,6 +204,14 @@ pub(crate) fn resolve_stash(
             ));
         }
         return Ok(canonical);
+    } else if alias == Some("stdlib") {
+        if let Some(result) = bundled_stdlib(request) {
+            return result;
+        }
+        importing_source
+            .parent()
+            .unwrap_or(Path::new("."))
+            .join(request)
     } else {
         importing_source
             .parent()
@@ -216,6 +224,39 @@ pub(crate) fn resolve_stash(
             format!("could not open stash {}: {error}", unresolved.display()),
         )
     })
+}
+
+fn bundled_stdlib(request: &Path) -> Option<Result<PathBuf>> {
+    let executable = env::current_exe().ok()?;
+    let root = executable.parent()?.join("stdlib");
+    root.is_dir()
+        .then(|| resolve_bundled_stdlib(&root, request))
+}
+
+fn resolve_bundled_stdlib(root: &Path, request: &Path) -> Result<PathBuf> {
+    let canonical_root = fs::canonicalize(root).map_err(|error| {
+        Error::new(
+            0,
+            format!("could not open bundled stdlib {}: {error}", root.display()),
+        )
+    })?;
+    let candidate = canonical_root.join(request.strip_prefix("stdlib").unwrap_or(request));
+    let canonical = fs::canonicalize(&candidate).map_err(|error| {
+        Error::new(
+            0,
+            format!("could not open stash {}: {error}", candidate.display()),
+        )
+    })?;
+    if !canonical.starts_with(&canonical_root) {
+        return Err(Error::new(
+            0,
+            format!(
+                "stash path {:?} escapes the bundled stdlib",
+                request.display()
+            ),
+        ));
+    }
+    Ok(canonical)
 }
 
 fn integer(value: &str, path: &Path, line: usize, minimum: usize, maximum: usize) -> Result<usize> {
@@ -335,6 +376,28 @@ mod tests {
         assert_eq!(
             resolve_stash(&entry, &entry, "linked/math.is").unwrap(),
             fs::canonicalize(shared.join("math.is")).unwrap()
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn resolves_bundled_stdlib_without_using_the_programme_directory() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("isen-bundled-stdlib-{unique}"));
+        let stdlib = base.join("distribution/stdlib");
+        fs::create_dir_all(stdlib.join("logging")).unwrap();
+        fs::write(
+            stdlib.join("logging/human.is"),
+            "dec answer = 42\nshare answer\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            resolve_bundled_stdlib(&stdlib, Path::new("stdlib/logging/human.is")).unwrap(),
+            fs::canonicalize(stdlib.join("logging/human.is")).unwrap()
         );
         fs::remove_dir_all(base).unwrap();
     }

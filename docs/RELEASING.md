@@ -38,8 +38,9 @@ The workflow runs the complete Linux release gate before packaging anything.
 It then builds and starts two release binaries:
 
 - `isen-linux-x86_64.tar.gz` — a statically linked `x86_64-unknown-linux-musl`
-  executable plus `LICENSE`.
-- `isen-macos-arm64.tar.gz` — a native Apple-Silicon executable plus `LICENSE`.
+  executable, the Isen standard library, and `LICENSE`.
+- `isen-macos-arm64.tar.gz` — a native Apple-Silicon executable, the Isen
+  standard library, and `LICENSE`.
 
 It publishes both archives and `SHA256SUMS` to the GitHub Release. Verify a
 download before extracting it:
@@ -48,6 +49,14 @@ download before extracting it:
 sha256sum -c SHA256SUMS
 tar -xzf isen-linux-x86_64.tar.gz
 ./isen --version
+```
+
+The bundled `stdlib/` directory must remain beside the `isen` executable.
+Imports beginning with `stdlib/` then work from programmes in any directory.
+To exercise the same outside-the-distribution check used by the release jobs:
+
+```sh
+sh scripts/release-smoke.sh isen-linux-x86_64.tar.gz
 ```
 
 The GitHub CLI can download selected release assets:

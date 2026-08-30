@@ -54,7 +54,10 @@ jobs:
           mkdir dist
           cp "target/$TARGET/release/isen" dist/isen
           cp LICENSE dist/LICENSE
-          tar -czf "$ASSET.tar.gz" -C dist isen LICENSE
+          cp -R stdlib dist/stdlib
+          tar -czf "$ASSET.tar.gz" -C dist isen stdlib LICENSE
+      - name: Smoke-test release archive
+        run: sh scripts/release-smoke.sh "$ASSET.tar.gz"
       - uses: actions/upload-artifact@v4
         with:
           name: release-linux
@@ -78,7 +81,10 @@ jobs:
           mkdir dist
           cp target/release/isen dist/isen
           cp LICENSE dist/LICENSE
-          tar -czf "$ASSET.tar.gz" -C dist isen LICENSE
+          cp -R stdlib dist/stdlib
+          tar -czf "$ASSET.tar.gz" -C dist isen stdlib LICENSE
+      - name: Smoke-test release archive
+        run: sh scripts/release-smoke.sh "$ASSET.tar.gz"
       - uses: actions/upload-artifact@v4
         with:
           name: release-macos

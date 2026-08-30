@@ -47,8 +47,10 @@ that does not match the version in `Cargo.toml`. The Linux
 `isen-linux-x86_64` artifact is a statically linked musl executable; the macOS
 `isen-macos-arm64` artifact is a native Apple-Silicon executable.
 Neither needs Rust or a separate Isen runtime installed. Both archives include
-the executable and `LICENSE`; macOS still relies on the operating system's
-standard system libraries, as every normal macOS command-line program does.
+the executable, `stdlib/`, and `LICENSE`; keep `stdlib/` beside the executable
+so bundled imports work from any directory. macOS still relies on the operating
+system's standard system libraries, as every normal macOS command-line program
+does.
 
 Every file is statically checked before any statement executes. To check a
 programme and all borrowed stashes without running it:
