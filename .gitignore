@@ -7,3 +7,4 @@
 .nvimlog
 
 /notes/
+/scripts/release-forgejo.sh

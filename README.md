@@ -142,13 +142,17 @@ LLMs writing `.is` programs, with an interpreter-maintainer appendix. Run
 For optional Rust-backed spaces that do not require editing the interpreter,
 see [extension authoring](docs/EXTENSIONS.md).
 
-## Neovim (the joke is real)
+## Editors
 
-The repository includes a small syntax-highlighting runtime plugin at
+The repository includes a small Neovim runtime plugin at
 [`editors/nvim/isen.nvim`](editors/nvim/isen.nvim). Its
 [LazyVim setup](editors/nvim/isen.nvim/README.md) is one local-plugin
 entry; it detects `.is` files, highlights `@@` plus `$ ... \$` blocks, and
 publishes compiler diagnostics on open and save.
+
+The dependency-free [Visual Studio Code extension](editors/vscode/isen/README.md)
+provides `.is` file detection, syntax highlighting, comments, bracket pairs,
+and basic indentation. It intentionally does not provide diagnostics yet.
 
 Project-local generated state belongs under `.isen/`.
 

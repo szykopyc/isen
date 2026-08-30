@@ -1,0 +1,34 @@
+{
+  "name": "isen-language",
+  "displayName": "Isen Language",
+  "description": "Syntax highlighting and editing support for Isen",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "isen",
+        "aliases": [
+          "Isen",
+          "isen"
+        ],
+        "extensions": [
+          ".is"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "isen",
+        "scopeName": "source.isen",
+        "path": "./syntaxes/isen.tmLanguage.json"
+      }
+    ]
+  }
+}

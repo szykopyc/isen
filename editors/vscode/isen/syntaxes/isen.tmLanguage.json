@@ -1,0 +1,104 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Isen",
+  "scopeName": "source.isen",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#declarations" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#constants" },
+    { "include": "#builtins" },
+    { "include": "#numbers" },
+    { "include": "#punctuation" },
+    { "include": "#members" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.isen", "match": "//.*$" },
+        { "name": "comment.line.number-sign.isen", "match": "#(?!\\{).*$" }
+      ]
+    },
+    "strings": {
+      "name": "string.quoted.double.isen",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        { "name": "constant.character.escape.isen", "match": "\\\\." }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(given)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.function.isen" },
+            "2": { "name": "entity.name.function.isen" }
+          }
+        },
+        {
+          "match": "\\b(form|problem)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.isen" },
+            "2": { "name": "entity.name.type.isen" }
+          }
+        },
+        {
+          "match": "\\b(space)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.namespace.isen" },
+            "2": { "name": "entity.name.namespace.isen" }
+          }
+        },
+        {
+          "match": "\\b(dec)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.variable.isen" },
+            "2": { "name": "variable.other.definition.isen" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        { "name": "keyword.control.isen", "match": "\\b(?:if|else|aslongas|each|in|enough|onwards|attempt|recover|always|ret|exit)\\b" },
+        { "name": "keyword.control.exception.isen", "match": "\\b(?:scream|raise)\\b" },
+        { "name": "keyword.other.import.isen", "match": "\\b(?:borrow|from|as)\\b" },
+        { "name": "keyword.other.isen", "match": "\\bshare\\b" },
+        { "name": "support.function.isen", "match": "\\b(?:say|shout)\\b" }
+      ]
+    },
+    "types": {
+      "name": "storage.type.isen",
+      "match": "\\b(?:int|int64|float|bool|string|json|naught|unit|perchance|udp_socket|udp_packet|tcp_listener|tcp_stream|http_response|list|arr|map|Problem)\\b"
+    },
+    "constants": {
+      "name": "constant.language.isen",
+      "match": "\\b(?:true|false|naught|unit)\\b"
+    },
+    "builtins": {
+      "name": "support.type.isen",
+      "match": "\\b(?:Time|Random|Args|Kwargs|Env|Path|Json|Test|Bytes|Udp|Tcp|Http|String|Array|Maths|Ordering|File|List|Map|Stack|Queue|Range|Input|Keyboard|LengText|size)\\b"
+    },
+    "numbers": {
+      "name": "constant.numeric.isen",
+      "match": "\\b\\d+(?:\\.\\d+)?\\b"
+    },
+    "punctuation": {
+      "patterns": [
+        { "name": "keyword.operator.type.isen", "match": "@@" },
+        { "name": "punctuation.definition.block.isen", "match": "\\\\\\$|\\$" },
+        { "name": "punctuation.definition.map.isen", "match": "#(?=\\{)" },
+        { "name": "keyword.operator.isen", "match": "==|!=|<=|>=|&&|\\|\\||[+\\-*/%<>=!]" }
+      ]
+    },
+    "members": {
+      "patterns": [
+        { "name": "support.function.cast.isen", "match": "\\.pour_into(?=\\()" },
+        { "name": "variable.other.property.isen", "match": "\\.[A-Za-z_][A-Za-z0-9_]*" }
+      ]
+    }
+  }
+}
