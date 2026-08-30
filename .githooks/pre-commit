@@ -10,6 +10,9 @@ cargo fmt --all -- --check
 echo "pre-commit: Rust type checking"
 cargo check --locked --all-features
 
+echo "pre-commit: Clippy"
+cargo clippy --all-targets --all-features -- -D warnings
+
 echo "pre-commit: Isen formatting"
 cargo run --quiet --locked --features ml-kernels -- --format --check .
 

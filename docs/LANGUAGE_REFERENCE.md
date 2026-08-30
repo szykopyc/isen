@@ -855,6 +855,7 @@ LengText.flush()          -> unit
 LengText.blit(frame @@ string) -> unit
 LengText.screen_begin()   -> unit
 LengText.screen_end()     -> unit
+LengText.size()           -> list[int]
 ```
 
 Each accepts exactly one displayable value and wraps its rendered form in ANSI
@@ -862,7 +863,8 @@ colour codes. `indent` prefixes every non-empty line and accepts 0 through 64
 spaces. `pretty_json` uses the same canonical JSON formatter as `Json.pretty`.
 `flush` clears the terminal. `screen_begin` clears once and hides the cursor;
 `blit` performs one cursor-home/frame/erase-tail write; `screen_end` restores
-the cursor. Call `screen_end` from `always` when animation can fail. Isen also
+the cursor. `size` returns `[columns, rows]` from the current terminal when
+available. Call `screen_end` from `always` when animation can fail. Isen also
 restores the cursor through registered extension cleanup after every programme
 outcome, including an uncaught failure.
 
@@ -1038,6 +1040,7 @@ LengText.flush() -> unit
 LengText.blit(arg1 @@ string) -> unit
 LengText.screen_begin() -> unit
 LengText.screen_end() -> unit
+LengText.size() -> list[int]
 LengText.palette() -> unit
 LengText.indent(arg1 @@ string, arg2 @@ int) -> string
 LengText.pretty_json(arg1 @@ json, arg2 @@ int) -> string

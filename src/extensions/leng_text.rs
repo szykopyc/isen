@@ -1,7 +1,11 @@
-use std::{cell::Cell, io::{self, Write}};
+use std::{
+    cell::{Cell, RefCell},
+    io::{self, Write},
+    rc::Rc,
+};
 
 use crate::native::{NativeCall, NativeExpected as Expected, NativeFunction, NativeProduced as Produced, NativeRegistry, NativeSignature as Signature, NativeSpace};
-use crate::{Result, Ty};
+use crate::{Data, Result, Ty, val};
 
 thread_local! {
     static SCREEN_ACTIVE: Cell<bool> = const { Cell::new(false) };
@@ -119,6 +123,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             NativeFunction { name: "blit", call: blit },
             NativeFunction { name: "screen_begin", call: screen_begin },
             NativeFunction { name: "screen_end", call: screen_end },
+            NativeFunction { name: "size", call: size },
             NativeFunction {
                 name: "palette",
                 call: palette,
@@ -146,6 +151,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             signatures.push(Signature::exact("blit", vec![Ty::String], Ty::Unit));
             signatures.push(Signature::exact("screen_begin", vec![], Ty::Unit));
             signatures.push(Signature::exact("screen_end", vec![], Ty::Unit));
+            signatures.push(Signature::exact(
+                "size",
+                vec![],
+                Ty::List(Box::new(Ty::Int)),
+            ));
             signatures.push(Signature::exact("palette", vec![], Ty::Unit));
             signatures.push(Signature::exact("indent", vec![Ty::String, Ty::Int], Ty::String));
             signatures.push(Signature::exact("pretty_json", vec![Ty::Json, Ty::Int], Ty::String));
@@ -359,6 +369,40 @@ fn screen_end(call: NativeCall<'_>) -> Result<crate::Value> {
     let result = terminal_write(&call, "screen_end", b"\x1b[?25h")?;
     SCREEN_ACTIVE.with(|active| active.set(false));
     Ok(result)
+}
+
+fn size(call: NativeCall<'_>) -> Result<crate::Value> {
+    call.exactly(0, "LengText.size")?;
+    #[cfg(unix)]
+    {
+        let fd = if unsafe { libc::isatty(libc::STDOUT_FILENO) } == 1 {
+            libc::STDOUT_FILENO
+        } else {
+            libc::STDIN_FILENO
+        };
+        let mut dimensions = unsafe { std::mem::zeroed::<libc::winsize>() };
+        if unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut dimensions) } == -1 {
+            return Err(call.error(format!(
+                "LengText.size failed: {}",
+                io::Error::last_os_error()
+            )));
+        }
+        if dimensions.ws_col == 0 || dimensions.ws_row == 0 {
+            return Err(call.error("LengText.size failed: terminal dimensions are unavailable"));
+        }
+        let values = vec![
+            val(Ty::Int, Data::Int(i64::from(dimensions.ws_col))),
+            val(Ty::Int, Data::Int(i64::from(dimensions.ws_row))),
+        ];
+        Ok(val(
+            Ty::List(Box::new(Ty::Int)),
+            Data::List(Rc::new(RefCell::new(values))),
+        ))
+    }
+    #[cfg(not(unix))]
+    {
+        Err(call.error("LengText.size is currently supported on Unix terminals"))
+    }
 }
 
 fn restore_screen(output: &mut impl Write) -> io::Result<()> {
