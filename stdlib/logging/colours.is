@@ -9,10 +9,12 @@ borrow make_event from "core.is"
 borrow enabled from "core.is"
 borrow emit from "core.is"
 
+/// Creates a logger with coloured terminal and plain-file output.
 given logger(minimum @@ string, stdout @@ bool, file @@ perchance[string]) @@ Logger $
   ret make_logger(minimum, stdout, file)
 \$
 
+/// Renders an event's context as an optional human-readable suffix.
 given suffix(event @@ LogEvent) @@ string $
   if size(event.context) > 0 $
     ret " " + String.show(event.context)
@@ -20,10 +22,12 @@ given suffix(event @@ LogEvent) @@ string $
   ret ""
 \$
 
+/// Renders one event without terminal colour escapes.
 given plain(event @@ LogEvent) @@ string $
   ret event.timestamp + " " + event.label + " " + event.message + suffix(event)
 \$
 
+/// Renders one event with a severity-coloured label.
 given coloured(event @@ LogEvent) @@ string $
   dec label @@ string = event.label
   if event.level == 10 $ label = LengText.grey(label) \$
@@ -33,6 +37,7 @@ given coloured(event @@ LogEvent) @@ string $
   ret event.timestamp + " " + label + " " + event.message + suffix(event)
 \$
 
+/// Writes coloured terminal and plain-file forms of an enabled event.
 given write(logger @@ Logger, level @@ int, label @@ string, message @@ string, context @@ map[string, string]) @@ unit $
   dec event @@ LogEvent = make_event(level, label, message, context)
   if enabled(logger, event) $
@@ -40,18 +45,22 @@ given write(logger @@ Logger, level @@ int, label @@ string, message @@ string, 
   \$
 \$
 
+/// Writes a debug event when debug logging is enabled.
 given debug(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 10, "DEBUG", message, context)
 \$
 
+/// Writes an informational event when info logging is enabled.
 given info(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 20, "INFO", message, context)
 \$
 
+/// Writes a warning event when warning logging is enabled.
 given warning(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 30, "WARNING", message, context)
 \$
 
+/// Writes an error event.
 given error(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 40, "ERROR", message, context)
 \$

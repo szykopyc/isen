@@ -1,6 +1,6 @@
 # Isen for Neovim
 
-Small, hand-written syntax highlighting and diagnostics for `.is` files. It
+Small, hand-written syntax highlighting, hover, snippets, and diagnostics for `.is` files. It
 knows about Isen's `@@` type marker and the entirely sensible `$ ... \$`
 blocks. Neovim 0.10 or newer is required for asynchronous diagnostics.
 
@@ -45,6 +45,16 @@ vim.g.isen_executable = "/absolute/path/to/isen/isen"
 Run `:IsenDiagnostics` to refresh manually. Set
 `vim.g.isen_diagnostics = false` before loading the plugin to keep syntax
 highlighting without diagnostics.
+
+Build Isen and press `K` over a user declaration or native function to show
+hover information from `isen lsp`. Consecutive `///` lines immediately above a
+declaration appear with its signature. Typing `$` inserts its matching `\$`;
+set `vim.g.isen_pairs = false` before loading to disable that behavior.
+
+Shared snippets are available through `:IsenSnippet`, for example
+`:IsenSnippet given` or `:IsenSnippet form`. The snippet definitions are the
+same JSON file consumed by the VS Code extension, so the editor templates stay
+in sync.
 
 The highlighting is deliberately a normal Vim syntax file, not a Tree-sitter
 grammar. The diagnostics transport is editor-neutral; Neovim is simply the

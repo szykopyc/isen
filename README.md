@@ -151,8 +151,9 @@ entry; it detects `.is` files, highlights `@@` plus `$ ... \$` blocks, and
 publishes compiler diagnostics on open and save.
 
 The dependency-free [Visual Studio Code extension](editors/vscode/isen/README.md)
-provides `.is` file detection, syntax highlighting, comments, bracket pairs,
-and basic indentation. It intentionally does not provide diagnostics yet.
+provides `.is` file detection, syntax highlighting, hover information, shared
+snippets, comments, bracket pairs, and basic indentation. Both editor plugins
+use the lightweight `isen lsp` server for hover information.
 
 Project-local generated state belongs under `.isen/`.
 

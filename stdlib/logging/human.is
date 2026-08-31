@@ -8,10 +8,12 @@ borrow make_event from "core.is"
 borrow enabled from "core.is"
 borrow emit from "core.is"
 
+/// Creates a logger that renders plain human-readable lines.
 given logger(minimum @@ string, stdout @@ bool, file @@ perchance[string]) @@ Logger $
   ret make_logger(minimum, stdout, file)
 \$
 
+/// Renders one event as a plain human-readable line.
 given render(event @@ LogEvent) @@ string $
   dec line @@ string = event.timestamp + " " + event.label + " " + event.message
   if size(event.context) > 0 $
@@ -20,6 +22,7 @@ given render(event @@ LogEvent) @@ string $
   ret line
 \$
 
+/// Writes an event when its numeric level is enabled.
 given write(logger @@ Logger, level @@ int, label @@ string, message @@ string, context @@ map[string, string]) @@ unit $
   dec event @@ LogEvent = make_event(level, label, message, context)
   if enabled(logger, event) $
@@ -28,18 +31,22 @@ given write(logger @@ Logger, level @@ int, label @@ string, message @@ string, 
   \$
 \$
 
+/// Writes a debug event when debug logging is enabled.
 given debug(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 10, "DEBUG", message, context)
 \$
 
+/// Writes an informational event when info logging is enabled.
 given info(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 20, "INFO", message, context)
 \$
 
+/// Writes a warning event when warning logging is enabled.
 given warning(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 30, "WARNING", message, context)
 \$
 
+/// Writes an error event.
 given error(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 40, "ERROR", message, context)
 \$

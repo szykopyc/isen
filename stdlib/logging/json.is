@@ -8,10 +8,12 @@ borrow make_event from "core.is"
 borrow enabled from "core.is"
 borrow emit from "core.is"
 
+/// Creates a logger that renders one JSON object per line.
 given logger(minimum @@ string, stdout @@ bool, file @@ perchance[string]) @@ Logger $
   ret make_logger(minimum, stdout, file)
 \$
 
+/// Renders one event as a compact JSON object.
 given render(event @@ LogEvent) @@ string $
   dec fields @@ map[string, json] = #{
     "timestamp": Json.string(event.timestamp),
@@ -22,6 +24,7 @@ given render(event @@ LogEvent) @@ string $
   ret Json.stringify(Json.object(fields))
 \$
 
+/// Writes a JSON event when its numeric level is enabled.
 given write(logger @@ Logger, level @@ int, label @@ string, message @@ string, context @@ map[string, string]) @@ unit $
   dec event @@ LogEvent = make_event(level, label, message, context)
   if enabled(logger, event) $
@@ -30,18 +33,22 @@ given write(logger @@ Logger, level @@ int, label @@ string, message @@ string, 
   \$
 \$
 
+/// Writes a debug event when debug logging is enabled.
 given debug(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 10, "debug", message, context)
 \$
 
+/// Writes an informational event when info logging is enabled.
 given info(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 20, "info", message, context)
 \$
 
+/// Writes a warning event when warning logging is enabled.
 given warning(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 30, "warning", message, context)
 \$
 
+/// Writes an error event.
 given error(logger @@ Logger, message @@ string, context @@ map[string, string]) @@ unit $
   ret write(logger, 40, "error", message, context)
 \$

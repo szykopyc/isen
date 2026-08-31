@@ -17,7 +17,16 @@
   "repository": {
     "comments": {
       "patterns": [
-        { "name": "comment.line.double-slash.isen", "match": "//.*$" },
+        {
+          "name": "comment.line.documentation.isen",
+          "begin": "///",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.documentation.isen" }
+          },
+          "end": "$",
+          "contentName": "string.other.documentation.isen"
+        },
+        { "name": "comment.line.double-slash.isen", "match": "//(?!/).*$" },
         { "name": "comment.line.number-sign.isen", "match": "#(?!\\{).*$" }
       ]
     },

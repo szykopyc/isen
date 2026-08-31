@@ -2,6 +2,7 @@
 
 borrow LengText
 
+/// A typed machine failure used to demonstrate recovery.
 problem MachineObjection $
   gear @@ int
 \$

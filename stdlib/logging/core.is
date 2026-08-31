@@ -3,12 +3,17 @@
 borrow File
 borrow Time
 
+/// Controls the minimum level and destinations for emitted log events.
 form Logger $
+  /// The lowest numeric level accepted by this logger.
   minimum @@ int,
+  /// Whether accepted events are written to standard output.
   stdout @@ bool,
+  /// An optional UTF-8 file receiving accepted events.
   file @@ perchance[string],
 \$
 
+/// A structured logging event shared by every logging renderer.
 form LogEvent $
   timestamp @@ string,
   level @@ int,
@@ -17,6 +22,7 @@ form LogEvent $
   context @@ map[string, string],
 \$
 
+/// Converts a public logging level name to its numeric severity.
 given level_value(name @@ string) @@ int $
   if name == "debug" $ ret 10 \$
   if name == "info" $ ret 20 \$
@@ -25,6 +31,7 @@ given level_value(name @@ string) @@ int $
   scream("unknown logging level: " + name)
 \$
 
+/// Creates logging configuration for a named minimum level and destinations.
 given make_logger(minimum @@ string, stdout @@ bool, file @@ perchance[string]) @@ Logger $
   ret Logger $
     minimum: level_value(minimum),
@@ -33,6 +40,7 @@ given make_logger(minimum @@ string, stdout @@ bool, file @@ perchance[string]) 
   \$
 \$
 
+/// Creates a timestamped structured logging event.
 given make_event(level @@ int, label @@ string, message @@ string, context @@ map[string, string]) @@ LogEvent $
   ret LogEvent $
     timestamp: Time.utc(),
@@ -43,11 +51,13 @@ given make_event(level @@ int, label @@ string, message @@ string, context @@ ma
   \$
 \$
 
+/// Reports whether an event meets a logger's minimum severity.
 given enabled(logger @@ Logger, event @@ LogEvent) @@ bool $
   ret event.level >= logger.minimum
 \$
 
 // stdout_line may contain ANSI escapes; file_line must not.
+/// Emits separate terminal and plain-file renderings to enabled destinations.
 given emit(logger @@ Logger, stdout_line @@ string, file_line @@ string) @@ unit $
   if logger.stdout $ say(stdout_line) \$
   if logger.file != naught $

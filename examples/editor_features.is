@@ -1,0 +1,27 @@
+// Open this file in Neovim or VS Code to try hover, pairing, and snippets.
+
+borrow Maths
+
+/// A named value collected by a sensor.
+form Measurement $
+  /// The human-readable sensor label.
+  label @@ string,
+  /// The value before normalization.
+  value @@ float,
+\$
+
+/// Scales a measurement by the supplied positive limit.
+/// The result is clamped to one.
+given normalized(measurement @@ Measurement, limit @@ float) @@ float $
+  dec ratio @@ float = measurement.value / limit
+  if ratio > 1.0 $ ret 1.0 \$
+  ret ratio
+\$
+
+/// The example measurement used by this programme.
+dec sample @@ Measurement = Measurement $
+  label: "temperature",
+  value: Maths.sqrt(81.0)
+\$
+
+say(sample.label, normalized(sample, 10.0))

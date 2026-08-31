@@ -37,6 +37,7 @@ syn match isenNumber /\<\d\+\%(.\d\+\)\?\>/
 syn region isenString start=/"/ skip=/\\./ end=/"/
 syn match isenComment /\/\/.*$/
 syn match isenComment /#\%({\)\@!.*$/
+syn match isenDocComment /\/\/\/.*$/
 
 hi def link isenDeclaration Keyword
 hi def link isenBorrow Include
@@ -63,5 +64,6 @@ hi def link isenField Identifier
 hi def link isenNumber Number
 hi def link isenString String
 hi def link isenComment Comment
+hi def link isenDocComment SpecialComment
 
 let b:current_syntax = "isen"

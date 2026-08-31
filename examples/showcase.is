@@ -5,6 +5,7 @@ borrow LengText
 borrow Random
 borrow Time
 
+/// One timestamped weather-sensor reading.
 form Reading $
   at @@ int,
   sensor @@ string,
@@ -12,12 +13,15 @@ form Reading $
   healthy @@ bool,
 \$
 
+/// Identifies a weather station and its optional operator.
 form Station $
   name @@ string,
   operator @@ perchance[string],
 \$
 
+/// Classifies and presents weather readings.
 space Weather $
+  /// Returns the operational state represented by a reading.
   given state(reading @@ Reading) @@ string $
     if !reading.healthy $ ret "fault" \$
     if reading.temperature < 19.0 $ ret "cold" \$
@@ -25,6 +29,7 @@ space Weather $
     ret "normal"
   \$
 
+  /// Returns a terminal-coloured representation of a reading's state.
   given coloured_state(reading @@ Reading) @@ string $
     dec state @@ string = Weather.state(reading)
     if state == "fault" $ ret LengText.red(state) \$
@@ -33,6 +38,7 @@ space Weather $
     ret LengText.green(state)
   \$
 
+  /// Returns an operator name or a readable fallback when it is absent.
   given operator_name(value @@ perchance[string]) @@ string $
     if value == naught $ ret "unassigned" \$
     ret value.pour_into(string)

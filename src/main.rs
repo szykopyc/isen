@@ -13,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 mod checker;
 mod diagnostics;
 mod formatter;
+mod lsp;
 mod native;
 mod profiler;
 mod project;
@@ -3344,7 +3345,7 @@ fn trailing_program_arguments(
 
 fn print_help() {
     println!(
-        "Isen {}\n\nUSAGE:\n  isen <file.is> [-- <argument>...]\n  isen --check <file.is>\n  isen --diagnostics <path>...\n  isen --format [--check] <path>...\n  isen --reference [--check] [reference.md]\n  isen test [--profile <name> | <path>...]\n  isen --profile [--json <report.json>] <file.is> [-- <argument>...]\n\nOPTIONS:\n  -h, --help       Show this help\n  -V, --version    Show the Isen version",
+        "Isen {}\n\nUSAGE:\n  isen <file.is> [-- <argument>...]\n  isen --check <file.is>\n  isen --diagnostics <path>...\n  isen --format [--check] <path>...\n  isen --reference [--check] [reference.md]\n  isen lsp\n  isen test [--profile <name> | <path>...]\n  isen --profile [--json <report.json>] <file.is> [-- <argument>...]\n\nOPTIONS:\n  -h, --help       Show this help\n  -V, --version    Show the Isen version",
         env!("CARGO_PKG_VERSION")
     );
 }
@@ -3374,6 +3375,17 @@ fn main() {
             std::process::exit(2)
         }
         println!("isen {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+    if first == "lsp" {
+        if arguments.next().is_some() {
+            eprintln!("usage: isen lsp");
+            std::process::exit(2)
+        }
+        if let Err(error) = lsp::run() {
+            eprintln!("LSP failed: {error}");
+            std::process::exit(1)
+        }
         return;
     }
     if first == "--reference" {

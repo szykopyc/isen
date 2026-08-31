@@ -5,9 +5,7 @@ vim.filetype.add({
   },
 })
 
-if vim.g.isen_diagnostics == false then
-  return
-end
+local diagnostics_enabled = vim.g.isen_diagnostics ~= false
 
 local namespace = vim.api.nvim_create_namespace("isen")
 local generations = {}
@@ -41,6 +39,53 @@ local function executable(path)
   local installed = vim.fn.exepath("isen")
   return installed ~= "" and installed or "isen"
 end
+
+local plugin_file = debug.getinfo(1, "S").source:sub(2)
+local snippets_file = vim.fs.normalize(vim.fs.dirname(plugin_file) .. "/../../../vscode/isen/snippets/isen.json")
+local snippets = {}
+local snippets_ok, snippets_text = pcall(vim.fn.readfile, snippets_file)
+if snippets_ok then
+  local decoded_ok, decoded = pcall(vim.json.decode, table.concat(snippets_text, "\n"))
+  if decoded_ok then
+    for _, snippet in pairs(decoded) do
+      snippets[snippet.prefix] = type(snippet.body) == "table" and table.concat(snippet.body, "\n") or snippet.body
+    end
+  end
+end
+
+vim.api.nvim_create_user_command("IsenSnippet", function(options)
+  local snippet = snippets[options.args]
+  if not snippet then
+    vim.notify("unknown Isen snippet: " .. options.args, vim.log.levels.ERROR)
+    return
+  end
+  vim.snippet.expand(snippet)
+end, {
+  nargs = 1,
+  complete = function()
+    return vim.tbl_keys(snippets)
+  end,
+})
+
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "isen",
+  callback = function(event)
+    local path = vim.api.nvim_buf_get_name(event.buf)
+    vim.lsp.start({
+      name = "isen",
+      cmd = { executable(path), "lsp" },
+      root_dir = vim.fs.root(path, { "isen.toml", ".git" }) or vim.fs.dirname(path),
+    })
+    vim.keymap.set("n", "K", vim.lsp.buf.hover, { buffer = event.buf, desc = "Isen hover" })
+    if vim.g.isen_pairs ~= false then
+      vim.keymap.set("i", "$", function()
+        local column = vim.fn.col(".")
+        local before = vim.api.nvim_get_current_line():sub(1, column - 1)
+        return before:sub(-1) == "\\" and "$" or "$\\$<Left><Left>"
+      end, { buffer = event.buf, expr = true, replace_keycodes = true })
+    end
+  end,
+})
 
 local function publish(buffer, generation, result)
   if not vim.api.nvim_buf_is_valid(buffer) or generations[buffer] ~= generation then
@@ -109,6 +154,9 @@ local function start_process(buffer, generation, path, program)
 end
 
 local function check(buffer)
+  if not diagnostics_enabled then
+    return
+  end
   buffer = buffer or vim.api.nvim_get_current_buf()
   local path = vim.api.nvim_buf_get_name(buffer)
   if path == "" or vim.bo[buffer].filetype ~= "isen" then

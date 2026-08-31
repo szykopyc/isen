@@ -3,6 +3,10 @@
   "displayName": "Isen Language",
   "description": "Syntax highlighting and editing support for Isen",
   "version": "0.1.0",
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:isen"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -29,6 +33,22 @@
         "scopeName": "source.isen",
         "path": "./syntaxes/isen.tmLanguage.json"
       }
-    ]
+    ],
+    "snippets": [
+      {
+        "language": "isen",
+        "path": "./snippets/isen.json"
+      }
+    ],
+    "configuration": {
+      "title": "Isen",
+      "properties": {
+        "isen.executable": {
+          "type": "string",
+          "default": "isen",
+          "description": "Path to the Isen executable used for hover information."
+        }
+      }
+    }
   }
 }

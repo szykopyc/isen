@@ -7,11 +7,13 @@ dec matrix @@ arr[list[int]] = @[[1, 2], [3, 4]]
 dec tags @@ map[string, int] = #{"rust": 1, "interpreter": 2}
 dec absent @@ perchance[string] = naught
 
+/// A small user record used throughout the language tour.
 form User $
   name @@ string,
   score @@ int,
 \$
 
+/// Returns the sum of every integer in a list.
 given total(values @@ list[int]) @@ int $
   dec sum @@ int = 0
   each value in values $
@@ -20,6 +22,7 @@ given total(values @@ list[int]) @@ int $
   ret sum
 \$
 
+/// Groups the tour's simple statistical operations.
 space Stats $
   given doubled(value @@ int) @@ int $
     ret value * 2

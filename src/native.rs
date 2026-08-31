@@ -182,6 +182,118 @@ pub(crate) struct NativePackageMetadata {
     pub constants: Vec<(&'static str, Ty)>,
 }
 
+pub(crate) fn hover_signature(qualified: &str) -> Option<(String, String)> {
+    let (space, name) = qualified.split_once('.')?;
+    let mut registry = NativeRegistry::metadata_only();
+    crate::extensions::register_all(&mut registry);
+    let metadata = registry.into_metadata();
+    let package = metadata.get(space)?;
+    if let Some(signature) = package
+        .functions
+        .iter()
+        .find(|signature| signature.name == name)
+    {
+        let parameters = signature
+            .parameters
+            .iter()
+            .map(expected_name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Some((
+            format!(
+                "{space}.{name}({parameters}) @@ {}",
+                produced_name(&signature.result)
+            ),
+            native_documentation(space, name),
+        ));
+    }
+    package
+        .constants
+        .iter()
+        .find(|(candidate, _)| *candidate == name)
+        .map(|(_, ty)| {
+            (
+                format!("{space}.{name} @@ {ty}"),
+                native_documentation(space, name),
+            )
+        })
+}
+
+fn native_documentation(space: &str, name: &str) -> String {
+    match (space, name) {
+        ("Maths", "sqrt") => "Returns the square root of a non-negative float.".into(),
+        ("Maths", "log") => "Returns the natural logarithm of a positive float.".into(),
+        ("Time", "clock") => {
+            "Returns monotonic milliseconds since this process first used Time.".into()
+        }
+        ("Time", "since") => {
+            "Returns the monotonic milliseconds elapsed since a Time.clock value.".into()
+        }
+        ("Time", "utc") => "Returns the current UTC timestamp in ISO 8601 form.".into(),
+        ("Json", "parse") => {
+            "Parses JSON text, raising a runtime failure when it is malformed.".into()
+        }
+        ("Json", "pretty") => "Formats a JSON value with the requested indentation width.".into(),
+        ("Path", "canonical") => "Returns the canonical absolute form of an existing path.".into(),
+        ("File", "read") => "Reads an entire UTF-8 text file.".into(),
+        ("File", "write") => "Replaces a file with UTF-8 text, creating it when necessary.".into(),
+        ("Args", "all") => "Returns every positional programme argument.".into(),
+        ("Kwargs", "all") => "Returns every keyword programme argument.".into(),
+        ("Env", "get") => "Returns an environment variable, or naught when it is absent.".into(),
+        _ => match space {
+            "Maths" => format!("Performs the native mathematical operation `{name}`."),
+            "Random" => format!("Provides the native random operation `{name}`."),
+            "Args" => format!("Reads positional programme arguments with `{name}`."),
+            "Kwargs" => format!("Reads keyword programme arguments with `{name}`."),
+            "Env" => format!("Reads environment data with `{name}`."),
+            "Path" => format!("Inspects or combines filesystem paths with `{name}`."),
+            "Json" => format!("Converts or inspects JSON data with `{name}`."),
+            "Time" => format!("Provides the native time operation `{name}`."),
+            "String" => format!("Transforms or inspects text with `{name}`."),
+            "File" => format!("Performs the filesystem operation `{name}`."),
+            "List" => format!("Performs the mutable list operation `{name}`."),
+            "Map" => format!("Performs the map operation `{name}`."),
+            "Stack" | "Queue" => format!("Performs the {space} operation `{name}`."),
+            "Range" => format!("Constructs an integer range with `{name}`."),
+            "Ordering" => format!("Compares compatible ordered values with `{name}`."),
+            "Array" => format!("Performs the contiguous-array operation `{name}`."),
+            "Bytes" => format!("Converts binary data with `{name}`."),
+            "Udp" | "Tcp" | "Http" => {
+                format!("Performs the native network operation `{space}.{name}`.")
+            }
+            "Keyboard" => format!("Controls or reads terminal keyboard input with `{name}`."),
+            "Input" => format!("Reads terminal input with `{name}`."),
+            "LengText" => format!("Formats or displays terminal text with `{name}`."),
+            "Test" => format!("Performs the test assertion `{name}`."),
+            "ML" => format!("Runs the optional native machine-learning kernel `{name}`."),
+            _ => format!("Rust-native operation `{space}.{name}`."),
+        },
+    }
+}
+
+fn expected_name(expected: &NativeExpected) -> String {
+    match expected {
+        NativeExpected::Exact(ty) => ty.to_string(),
+        NativeExpected::Any => "any".into(),
+        NativeExpected::Number => "number".into(),
+        NativeExpected::Ordered => "ordered".into(),
+        NativeExpected::List => "list[T]".into(),
+        NativeExpected::Map => "map[K, V]".into(),
+        NativeExpected::SameAs(index) => format!("T{index}"),
+    }
+}
+
+fn produced_name(produced: &NativeProduced) -> String {
+    match produced {
+        NativeProduced::Exact(ty) => ty.to_string(),
+        NativeProduced::SameAs(index) => format!("T{index}"),
+        NativeProduced::OptionalListElement(index) => format!("perchance[element(T{index})]"),
+        NativeProduced::OptionalMapValue(index) => format!("perchance[value(T{index})]"),
+        NativeProduced::MapKeys(index) => format!("list[key(T{index})]"),
+        NativeProduced::ArrayOfArgument(index) => format!("arr[T{index}]"),
+    }
+}
+
 pub(crate) struct NativeRegistry {
     root: Option<EnvRef>,
     metadata: BTreeMap<&'static str, NativePackageMetadata>,

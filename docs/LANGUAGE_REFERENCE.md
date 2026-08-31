@@ -67,6 +67,8 @@ say(person.name, LengText.green(rating(person)))
 - String literals use double quotes. Supported escapes are `\n`, `\t`, `\"`, and
   `\\`. Multiline string literals are not supported.
 - `// comment` and `# comment` run to the end of the line.
+- `/// documentation` is highlighted separately and appears in editor hover
+  information when placed immediately above a declaration.
 - `#{` starts a map literal, so it is not a comment.
 - Semicolons are optional. Newlines are whitespace, not tokens; statement
   shapes normally determine where statements end.
